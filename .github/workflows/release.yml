@@ -1,0 +1,44 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile DSHTray.exe
+        shell: pwsh
+        run: |
+          $fx = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
+          & "$fx\csc.exe" /nologo /t:winexe /platform:anycpu /optimize+ `
+            /win32icon:assets\DSHTray.ico `
+            /win32manifest:app.manifest `
+            /resource:assets\whale-blue.png,DSHTray.blue.png `
+            /resource:assets\whale-dark.png,DSHTray.dark.png `
+            "/r:$fx\System.Drawing.dll" "/r:$fx\System.Windows.Forms.dll" `
+            /out:DSHTray.exe Program.cs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item DSHTray.exe | Select-Object Name, Length
+
+      - name: Generate SHA256 checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash DSHTray.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  DSHTray.exe" | Set-Content -Encoding ascii DSHTray.exe.sha256
+          Get-Content DSHTray.exe.sha256
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            DSHTray.exe
+            DSHTray.exe.sha256
+          generate_release_notes: true

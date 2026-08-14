@@ -15,6 +15,16 @@ Windows 托盘小程序,管理 [DeepSeek Harness](https://github.com/deepseek-ai
 - **按需提权**:harness 若以管理员身份运行,托盘自动以管理员身份执行 kill(UAC 为「从不通知」时静默)
 - **日志**:`%LOCALAPPDATA%\DSHTray\dshtray.log`,超过 5MB 自动轮转
 
+## 下载与安装
+
+> 仓库地址待定,发布后替换下方链接。
+
+- 从 [Releases](https://github.com/<owner>/<repo>/releases) 下载最新的 `DSHTray.exe` —— **单文件,无需安装任何运行时**(Windows 10/11 自带 .NET Framework 4.8)
+- 可选:核对 `DSHTray.exe.sha256` 校验和(`Get-FileHash DSHTray.exe -Algorithm SHA256`)
+- 双击即可运行
+- **首次运行提示**:未签名的个人工具会被 SmartScreen 提示「未知发布者」——点「更多信息」→「仍要运行」即可(详见 FAQ)
+- 想自己编译请看下方「构建(从源码)」
+
 ## 快速开始
 
 ### 1. 环境要求
