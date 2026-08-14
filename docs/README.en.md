@@ -21,9 +21,7 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 
 ## Download & Install
 
-<!-- TODO: replace owner/repo in the links below and delete this line once the repository exists -->
-
-- Download the latest `dsh-tray.exe` from [Releases](https://github.com/<owner>/<repo>/releases)
+- Download the latest `dsh-tray.exe` from [Releases](https://github.com/KAIbsb/dsh-tray/releases)
 - **Single file, zero dependencies**: no runtime to install (Windows 10/11 ships .NET Framework 4.8), just double-click to run
 - **First run**: as an unsigned tool, SmartScreen may show "Unknown publisher" — click "More info" → "Run anyway" (see FAQ)
 - **Upgrading**: overwrite the old exe with the new one; your settings (autostart, auto-restart, `dshtray.ini`) are untouched

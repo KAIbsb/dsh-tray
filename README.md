@@ -22,9 +22,7 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 
 ## 下载与安装
 
-<!-- TODO: 仓库建好后替换下方链接中的 owner/repo,并删掉本行 -->
-
-- 从 [Releases](https://github.com/<owner>/<repo>/releases) 下载最新的 `dsh-tray.exe`
+- 从 [Releases](https://github.com/KAIbsb/dsh-tray/releases) 下载最新的 `dsh-tray.exe`
 - **单文件,零依赖**:无需安装任何运行时(Windows 10/11 自带 .NET Framework 4.8),双击即用
 - **首次运行提示**:未签名的小工具会被 SmartScreen 提示「未知发布者」→ 点「更多信息」→「仍要运行」(详见 FAQ)
 - **升级**:下载新 exe 直接覆盖旧文件即可,设置(开机自启、崩溃自动重启、`dshtray.ini`)不受影响
