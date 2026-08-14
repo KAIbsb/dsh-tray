@@ -28,7 +28,7 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 - **单文件,零依赖**:无需安装任何运行时(Windows 10/11 自带 .NET Framework 4.8),双击即用
 - **首次运行提示**:未签名的小工具会被 SmartScreen 提示「未知发布者」→ 点「更多信息」→「仍要运行」(详见 FAQ)
 - **升级**:下载新 exe 直接覆盖旧文件即可,设置(开机自启、崩溃自动重启、`dshtray.ini`)不受影响
-- 想自己编译?见下方「构建(从源码)」
+- 想自己编译或贡献代码?见 [开发者文档](docs/DEVELOPMENT.md)
 
 ## 快速开始
 
@@ -87,22 +87,6 @@ harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标�
 | 运行中 | 蓝色鲸鱼 |
 | 已停止 | 黑 / 白鲸,随系统深浅色切换 |
 
-## 构建(从源码)
-
-需要 Windows 自带的 .NET Framework 编译器(`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`):
-
-```bat
-csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
-  /win32icon:assets\DSHTray.ico ^
-  /win32manifest:app.manifest ^
-  /resource:assets\whale-blue.png,DSHTray.blue.png ^
-  /resource:assets\whale-dark.png,DSHTray.dark.png ^
-  /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:dsh-tray.exe Program.cs Lang.cs
-```
-
-发布:push 一个 `v*` 标签,GitHub Actions 自动编译出 exe 并创建 Release(见 `.github/workflows/release.yml`)。
-
 ## 配置
 
 无需任何配置即可运行 —— node、dsh、Chrome 会自动探测。特殊环境可在 exe 同目录建 `dshtray.ini` 覆盖(全部项均可省略):
@@ -129,7 +113,7 @@ lang = zh        # 界面语言 zh/en,缺省跟随系统
 
 **SmartScreen 提示「未知发布者」怎么办?**
 
-dsh-tray 是未签名的小工具,首次运行会被 Windows SmartScreen 拦截。点「更多信息」→「仍要运行」即可。在意的话可以自己从源码构建(见「构建」)。
+dsh-tray 是未签名的小工具,首次运行会被 Windows SmartScreen 拦截。点「更多信息」→「仍要运行」即可。在意的话可以自己从源码构建(见[开发者文档](docs/DEVELOPMENT.md))。
 
 **退出托盘后 harness 还在运行?**
 

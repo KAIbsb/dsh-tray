@@ -27,7 +27,7 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 - **Single file, zero dependencies**: no runtime to install (Windows 10/11 ships .NET Framework 4.8), just double-click to run
 - **First run**: as an unsigned tool, SmartScreen may show "Unknown publisher" — click "More info" → "Run anyway" (see FAQ)
 - **Upgrading**: overwrite the old exe with the new one; your settings (autostart, auto-restart, `dshtray.ini`) are untouched
-- Want to build it yourself? See [Build from source](#build-from-source)
+- Want to build it yourself or contribute? See the [developer documentation](DEVELOPMENT.md)
 
 ## Quick Start
 
@@ -86,22 +86,6 @@ Exit            ← exits the tray only; the harness keeps running (use Stop to 
 | Running | Blue whale |
 | Stopped | Black/white whale, follows the system light/dark theme |
 
-## Build from source
-
-Requires the .NET Framework compiler that ships with Windows (`C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe`):
-
-```bat
-csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
-  /win32icon:assets\DSHTray.ico ^
-  /win32manifest:app.manifest ^
-  /resource:assets\whale-blue.png,DSHTray.blue.png ^
-  /resource:assets\whale-dark.png,DSHTray.dark.png ^
-  /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:dsh-tray.exe Program.cs Lang.cs
-```
-
-Releases: pushing a `v*` tag makes GitHub Actions compile the exe and create a Release automatically (see `.github/workflows/release.yml`).
-
 ## Configuration
 
 No configuration is needed — node, dsh and Chrome are auto-detected. For special environments, create a `dshtray.ini` next to the exe to override (all keys optional):
@@ -128,7 +112,7 @@ Precedence: explicit ini values > auto-detection (PATH / common install location
 
 **SmartScreen shows "Unknown publisher"?**
 
-dsh-tray is an unsigned tool, so Windows SmartScreen may block the first run. Click "More info" → "Run anyway". If it bothers you, build from source yourself (see [Build from source](#build-from-source)).
+dsh-tray is an unsigned tool, so Windows SmartScreen may block the first run. Click "More info" → "Run anyway". If it bothers you, build from source yourself (see the [developer documentation](DEVELOPMENT.md)).
 
 **The harness is still running after I exit the tray?**
 
