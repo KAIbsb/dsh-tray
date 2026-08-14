@@ -24,7 +24,7 @@ jobs:
             /resource:assets\whale-blue.png,DSHTray.blue.png `
             /resource:assets\whale-dark.png,DSHTray.dark.png `
             "/r:$fx\System.Drawing.dll" "/r:$fx\System.Windows.Forms.dll" `
-            /out:dsh-tray.exe Program.cs
+            /out:dsh-tray.exe Program.cs Lang.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Item dsh-tray.exe | Select-Object Name, Length
 

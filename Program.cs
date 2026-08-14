@@ -22,10 +22,13 @@ static class Program
     static string ChromePath;
     static string WebUrl = "http://127.0.0.1:3080";
     static int Port = 3080;
+    static string iniLang;
 
     static void InitConfig()
     {
         LoadIniConfig();
+        Lang.Init(iniLang);
+        Log("UI language: " + Lang.Code);
         if (string.IsNullOrEmpty(NodePath) || !File.Exists(NodePath)) NodePath = DetectNode();
         if (string.IsNullOrEmpty(DshEntry) || !File.Exists(DshEntry)) DshEntry = DetectDshEntry();
         if (string.IsNullOrEmpty(DshWorkDir) && !string.IsNullOrEmpty(DshEntry))
@@ -69,6 +72,9 @@ static class Program
                             Port = p;
                             WebUrl = "http://127.0.0.1:" + p;
                         }
+                        break;
+                    case "lang":
+                        iniLang = val;
                         break;
                 }
             }
@@ -376,6 +382,7 @@ static class Program
         sb.AppendLine("chrome exists=" + File.Exists(ChromePath));
         sb.AppendLine("self integrity=" + selfIntegrity);
         sb.AppendLine("autoRestart=" + autoRestartEnabled);
+        sb.AppendLine("ui lang=" + Lang.Code);
         using (Stream rs = Assembly.GetExecutingAssembly().GetManifestResourceStream("DSHTray.blue.png"))
             sb.AppendLine("blue icon resource=" + (rs != null));
         using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("DSHTray.dark.png"))
@@ -421,17 +428,17 @@ static class Program
         try
         {
             var defs = new List<MenuDef>();
-            defs.Add(new MenuDef("打开窗口", delegate { }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.open"), delegate { }, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef("启动", delegate { }, false, false));
-            defs.Add(new MenuDef("重启", delegate { }, true, false));
-            defs.Add(new MenuDef("停止", delegate { }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.start"), delegate { }, false, false));
+            defs.Add(new MenuDef(Lang.T("menu.restart"), delegate { }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { }, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef("崩溃自动重启", delegate { }, true, true));
-            defs.Add(new MenuDef("开机自启", delegate { }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.autoRestart"), delegate { }, true, true));
+            defs.Add(new MenuDef(Lang.T("menu.autostart"), delegate { }, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef("打开日志", delegate { }, true, false));
-            defs.Add(new MenuDef("退出", delegate { }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.openLogs"), delegate { }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.exit"), delegate { }, true, false));
             List<Action> actions;
             IntPtr hmenu;
             actions = BuildNativeMenu(defs, out hmenu);
@@ -459,7 +466,7 @@ static class Program
     static void BuildTray()
     {
         tray = new NotifyIcon();
-        tray.Text = "DSH Harness 托盘管家";
+        tray.Text = Lang.T("tray.title");
         tray.Visible = true;
         try { whiteIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         blueIcon = BuildIconFromResource("DSHTray.blue.png");
@@ -501,17 +508,17 @@ static class Program
         {
             bool up = IsDshUp();
             var defs = new List<MenuDef>();
-            defs.Add(new MenuDef("打开窗口", OpenWindow, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.open"), OpenWindow, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef("启动", delegate { if (!IsDshUp()) StartDsh(); }, !up, false));
-            defs.Add(new MenuDef("重启", RestartDsh, up, false));
-            defs.Add(new MenuDef("停止", delegate { if (IsDshUp()) { userStopped = true; StopDsh(); UpdateStatus(); } }, up, false));
+            defs.Add(new MenuDef(Lang.T("menu.start"), delegate { if (!IsDshUp()) StartDsh(); }, !up, false));
+            defs.Add(new MenuDef(Lang.T("menu.restart"), RestartDsh, up, false));
+            defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { if (IsDshUp()) { userStopped = true; StopDsh(); UpdateStatus(); } }, up, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef("崩溃自动重启", ToggleAutoRestart, true, autoRestartEnabled));
-            defs.Add(new MenuDef("开机自启", ToggleAutostart, true, IsAutostartEnabled()));
+            defs.Add(new MenuDef(Lang.T("menu.autoRestart"), ToggleAutoRestart, true, autoRestartEnabled));
+            defs.Add(new MenuDef(Lang.T("menu.autostart"), ToggleAutostart, true, IsAutostartEnabled()));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef("打开日志", OpenLog, true, false));
-            defs.Add(new MenuDef("退出", ExitApp, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.openLogs"), OpenLog, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true, false));
 
             List<Action> actions;
             IntPtr hmenu;
@@ -995,7 +1002,7 @@ static class Program
         if (up) use = blueIcon;
         else use = darkMode ? whiteIcon : darkIcon;
         if (use != null) tray.Icon = use;
-        tray.Text = up ? "DSH Harness — 运行中" : "DSH Harness — 已停止";
+        tray.Text = up ? Lang.T("tray.running") : Lang.T("tray.stopped");
     }
 
     static bool IsDarkMode()
@@ -1101,7 +1108,7 @@ static class Program
 
     static void ExitApp()
     {
-        // tray only: harness keeps running (stop it via the 停止 menu item)
+        // tray only: harness keeps running (stop it via the Stop menu item)
         Log("=== ExitApp (tray only, harness kept running) ===");
         if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
         Application.Exit();

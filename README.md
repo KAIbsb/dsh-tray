@@ -98,7 +98,7 @@ csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
   /resource:assets\whale-blue.png,DSHTray.blue.png ^
   /resource:assets\whale-dark.png,DSHTray.dark.png ^
   /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:dsh-tray.exe Program.cs
+  /out:dsh-tray.exe Program.cs Lang.cs
 ```
 
 发布:push 一个 `v*` 标签,GitHub Actions 自动编译出 exe 并创建 Release(见 `.github/workflows/release.yml`)。
@@ -114,6 +114,7 @@ dshentry = C:\path\to\dsh\lib\bin.js
 dshworkdir = C:\path\to\dsh
 chrome = C:\path\to\chrome.exe
 port = 3080
+lang = zh        # 界面语言 zh/en,缺省跟随系统
 ```
 
 优先级:ini 显式值 > 自动探测(PATH / 常见安装路径 / npm 全局目录)。

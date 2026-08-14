@@ -56,20 +56,20 @@ Double-click `dsh-tray.exe` → the whale icon appears in the tray → the harne
 
 ### Tray menu
 
-Right-click the tray icon:
+Right-click the tray icon (menu language follows the system UI language, or `lang` in `dshtray.ini`):
 
 ```
-打开窗口        Open Window
+Open Window
 ────────
-启动            Start (available when the harness is stopped)
-重启            Restart (available when running)
-停止            Stop the harness only; the tray stays
+Start           ← available when the harness is stopped
+Restart         ← available when running
+Stop            ← stops the harness only; the tray stays
 ────────
-☑ 崩溃自动重启   Auto-restart on crash
-☐ 开机自启       Start with Windows
+☑ Auto-restart on Crash
+☐ Start with Windows
 ────────
-打开日志        Open logs
-退出            Exit the tray only; the harness keeps running (use Stop to stop it)
+Open Logs
+Exit            ← exits the tray only; the harness keeps running (use Stop to stop it)
 ```
 
 ### Click behavior
@@ -97,7 +97,7 @@ csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
   /resource:assets\whale-blue.png,DSHTray.blue.png ^
   /resource:assets\whale-dark.png,DSHTray.dark.png ^
   /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:dsh-tray.exe Program.cs
+  /out:dsh-tray.exe Program.cs Lang.cs
 ```
 
 Releases: pushing a `v*` tag makes GitHub Actions compile the exe and create a Release automatically (see `.github/workflows/release.yml`).
@@ -113,6 +113,7 @@ dshentry = C:\path\to\dsh\lib\bin.js
 dshworkdir = C:\path\to\dsh
 chrome = C:\path\to\chrome.exe
 port = 3080
+lang = en        # UI language zh/en; defaults to the system UI language
 ```
 
 Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory).
