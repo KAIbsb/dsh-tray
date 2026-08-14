@@ -1,0 +1,20 @@
+# 构建产物(不入库)
+*.exe
+
+# 图标构建工具(一次性,本地保留)
+IconBuilder.cs
+CheckIcon.cs
+ElevationCheck.cs
+make_whale_svg.js
+
+# 测试产物
+smoke-result.txt
+menu-test.txt
+menu-test.png
+find-window-result.txt
+
+# 图标中间产物(可本地重新生成)
+assets/whale-white.svg
+assets/whale-preview.png
+assets/DSHTray.blue.ico
+assets/DSHTray.dark.ico
