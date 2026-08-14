@@ -1,5 +1,7 @@
 # dsh-tray
 
+**[English](docs/README.en.md) | 简体中文**
+
 DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自动拉起,全部在托盘右键完成。
 不用开终端、不怕误关窗口，配合应用模式窗口效果更佳！
 
