@@ -173,6 +173,8 @@ static class Program
     static int lastAutoRestartTick;
     static bool menuShowing;
     static Form menuOwner;
+    static System.Windows.Forms.Timer leftClickTimer;
+    static bool leftClickPending;
 
     // ---- integrity (elevation) helpers ----
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -466,20 +468,42 @@ static class Program
         tray.Icon = whiteIcon != null ? whiteIcon : SystemIcons.Application;
         tray.MouseUp += delegate(object s, MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Right) ShowTrayMenu();
-        };
-        tray.DoubleClick += delegate
-        {
-            if (Control.MouseButtons != MouseButtons.Left) return; // left double-click only
-            if (!IsDshUp())
+            if (e.Button == MouseButtons.Right) { ShowTrayMenu(); return; }
+            if (e.Button == MouseButtons.Left)
             {
-                userStopped = false;
-                StartDsh();
-                WaitForPortUp(30000);
-                UpdateStatus();
+                // debounce: a second click within the interval counts as a double-click
+                leftClickPending = true;
+                if (leftClickTimer == null)
+                {
+                    leftClickTimer = new System.Windows.Forms.Timer();
+                    leftClickTimer.Interval = 300;
+                    leftClickTimer.Tick += delegate
+                    {
+                        leftClickTimer.Stop();
+                        if (leftClickPending)
+                        {
+                            leftClickPending = false;
+                            StartAndOpen();
+                        }
+                    };
+                }
+                leftClickTimer.Stop();
+                leftClickTimer.Start();
             }
-            OpenWindow();
         };
+    }
+
+    // left single/double click: ensure the harness is up, then open the window
+    static void StartAndOpen()
+    {
+        if (!IsDshUp())
+        {
+            userStopped = false;
+            StartDsh();
+            WaitForPortUp(30000);
+            UpdateStatus();
+        }
+        OpenWindow();
     }
 
     static void ShowTrayMenu()
