@@ -3,7 +3,7 @@
 **简体中文 | [English](docs/README.en.md)**
 
 DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自动拉起,全部在托盘右键完成。
-不用开终端、不怕误关窗口，配合应用模式窗口效果更佳！
+不用开终端、不怕误关窗口，配合浏览器 APP 模式效果更佳！
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -16,7 +16,7 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 - **开机自启**(可开关):写注册表 `HKCU\...\Run`,免管理员
 - **原生系统右键菜单**:Win11 圆角主题样式,深色模式自动跟随
 - **无终端窗口**:隐藏拉起 `node dsh web`,输出重定向到独立日志文件 `harness.log`,与托盘生命周期解耦
-- **重启后自动刷新窗口**:重启完成自动刷新应用模式窗口
+- **重启后自动刷新窗口**:重启完成自动刷新浏览器 APP 模式窗口
 - **按需提权**:harness 若以管理员身份运行,托盘自动以管理员身份执行 kill(UAC 为「从不通知」时静默)
 - **日志**:`%LOCALAPPDATA%\dsh-tray\tray.log`,超过 5MB 自动轮转
 
@@ -37,15 +37,13 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 | Windows 10/11 | .NET Framework 4.8 系统自带 |
 | Node.js | 运行 harness 所需 |
 | DeepSeek Harness | 安装方法见 [DeepSeek-Harness 仓库](https://github.com/deepseek-ai/DeepSeek-Harness) |
-| Google Chrome | 可选,用于应用模式窗口显示 |
+| Google Chrome | 可选,用于浏览器 APP 模式窗口显示 |
 
-### 2. 创建应用模式窗口(可选但推荐)
+### 2. 创建浏览器 APP 模式窗口(可选但推荐)
 
-harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标签页的话,可以做成 Chrome 应用模式窗口:
+harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标签页的话,可以把它做成独立的浏览器 APP 模式窗口(具体创建方法请自行查阅,搜索「Chrome app mode」即可)。
 
-浏览器打开该地址 → Chrome 右上角 `⋮` → **更多工具** → **创建快捷方式** → 勾选 **「作为窗口打开」** → 创建
-
-之后托盘菜单「打开窗口」会自动拉起这个应用模式窗口;窗口关了不影响 harness,想再开点一下托盘即可。
+之后托盘菜单「打开窗口」会自动拉起这个窗口;窗口关了不影响 harness,想再开点一下托盘即可。
 
 ### 3. 运行 dsh-tray
 

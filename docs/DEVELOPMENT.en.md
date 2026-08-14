@@ -6,7 +6,7 @@ Repository structure and development guide for dsh-tray — for developers who w
 
 - Windows 10/11 (ships .NET Framework 4.8 and the `csc.exe` compiler)
 - Node.js + DeepSeek Harness (the thing this tool manages)
-- Optional: Google Chrome (application-mode window)
+- Optional: Google Chrome (browser app-mode window)
 
 ## Repository layout
 

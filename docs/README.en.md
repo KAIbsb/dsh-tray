@@ -2,7 +2,7 @@
 
 **[简体中文](../README.md) | English**
 
-A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness): start / restart / stop / auto-restart on crash, all from the tray's right-click menu. No terminal needed, no risk of accidentally closing the window — works best paired with an application-mode window.
+A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness): start / restart / stop / auto-restart on crash, all from the tray's right-click menu. No terminal needed, no risk of accidentally closing the window — works best paired with a browser app-mode window.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 
@@ -15,7 +15,7 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 - **Start with Windows** (toggleable): writes `HKCU\...\Run`, no admin rights needed
 - **Native system menu**: Windows 11 rounded theme, follows the dark mode automatically
 - **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `harness.log` independent of the tray's lifetime
-- **Auto-refresh on restart**: refreshes the application-mode window when a restart finishes
+- **Auto-refresh on restart**: refreshes the browser app-mode window when a restart finishes
 - **On-demand elevation**: if the harness runs as administrator, the tray elevates itself to kill it (silent when UAC is set to "never notify")
 - **Logs**: `%LOCALAPPDATA%\dsh-tray\tray.log`, auto-rotated past 5 MB
 
@@ -36,15 +36,13 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 | Windows 10/11 | .NET Framework 4.8, built in |
 | Node.js | required to run the harness |
 | DeepSeek Harness | install it per the [DeepSeek-Harness repo](https://github.com/deepseek-ai/DeepSeek-Harness) |
-| Google Chrome | optional, for the application-mode window |
+| Google Chrome | optional, for the browser app-mode window |
 
-### 2. Create an application-mode window (optional but recommended)
+### 2. Create a browser app-mode window (optional but recommended)
 
-The harness Web UI lives at `http://127.0.0.1:3080`. To keep it out of your browser tabs, turn it into a Chrome application-mode window:
+The harness Web UI lives at `http://127.0.0.1:3080`. To keep it out of your browser tabs, turn it into a standalone browser app-mode window (how to create one is left to you — search "Chrome app mode").
 
-Open the URL in Chrome → `⋮` (top right) → **More tools** → **Create shortcut** → tick **"Open as window"** → **Create**
-
-The tray's "Open Window" menu item will then launch this application-mode window. Closing it does not affect the harness — click the tray icon to reopen it anytime.
+The tray's "Open Window" menu item will then launch this window. Closing it does not affect the harness — click the tray icon to reopen it anytime.
 
 ### 3. Run dsh-tray
 

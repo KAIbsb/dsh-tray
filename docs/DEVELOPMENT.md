@@ -6,7 +6,7 @@
 
 - Windows 10/11(自带 .NET Framework 4.8 与编译器 `csc.exe`)
 - Node.js + DeepSeek Harness(运行与调试对象)
-- 可选:Google Chrome(应用模式窗口)
+- 可选:Google Chrome(浏览器 APP 模式窗口)
 
 ## 项目结构
 
