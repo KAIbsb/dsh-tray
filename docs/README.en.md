@@ -14,10 +14,10 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 - **Auto-restart on crash** (toggleable): brings the harness back up after an unexpected exit, with cooldowns to prevent restart loops
 - **Start with Windows** (toggleable): writes `HKCU\...\Run`, no admin rights needed
 - **Native system menu**: Windows 11 rounded theme, follows the dark mode automatically
-- **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `dsh.log` independent of the tray's lifetime
+- **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `harness.log` independent of the tray's lifetime
 - **Auto-refresh on restart**: refreshes the application-mode window when a restart finishes
 - **On-demand elevation**: if the harness runs as administrator, the tray elevates itself to kill it (silent when UAC is set to "never notify")
-- **Logs**: `%LOCALAPPDATA%\DSHTray\dshtray.log`, auto-rotated past 5 MB
+- **Logs**: `%LOCALAPPDATA%\dsh-tray\tray.log`, auto-rotated past 5 MB
 
 ## Download & Install
 
@@ -120,8 +120,8 @@ Precedence: explicit ini values > auto-detection (PATH / common install location
 
 ## Logs
 
-- `%LOCALAPPDATA%\DSHTray\dshtray.log` — tray operations (start / stop / restart / elevation / auto-restart etc.), auto-rotated to `dshtray.log.old` past 5 MB
-- `%LOCALAPPDATA%\DSHTray\dsh.log` — harness output, independent of the tray's lifetime (keeps writing after the tray exits)
+- `%LOCALAPPDATA%\dsh-tray\tray.log` — tray operations (start / stop / restart / elevation / auto-restart etc.), auto-rotated to `tray.log.old` past 5 MB
+- `%LOCALAPPDATA%\dsh-tray\harness.log` — harness output, independent of the tray's lifetime (keeps writing after the tray exits)
 - The tray menu's "Open Logs" item opens both files
 
 ## FAQ

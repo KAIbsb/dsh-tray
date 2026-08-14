@@ -15,10 +15,10 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 - **崩溃自动重启**(可开关):harness 意外退出自动拉起,带冷却防死循环
 - **开机自启**(可开关):写注册表 `HKCU\...\Run`,免管理员
 - **原生系统右键菜单**:Win11 圆角主题样式,深色模式自动跟随
-- **无终端窗口**:隐藏拉起 `node dsh web`,输出重定向到独立日志文件 `dsh.log`,与托盘生命周期解耦
+- **无终端窗口**:隐藏拉起 `node dsh web`,输出重定向到独立日志文件 `harness.log`,与托盘生命周期解耦
 - **重启后自动刷新窗口**:重启完成自动刷新应用模式窗口
 - **按需提权**:harness 若以管理员身份运行,托盘自动以管理员身份执行 kill(UAC 为「从不通知」时静默)
-- **日志**:`%LOCALAPPDATA%\DSHTray\dshtray.log`,超过 5MB 自动轮转
+- **日志**:`%LOCALAPPDATA%\dsh-tray\tray.log`,超过 5MB 自动轮转
 
 ## 下载与安装
 
@@ -121,8 +121,8 @@ lang = zh        # 界面语言 zh/en,缺省跟随系统
 
 ## 日志
 
-- `%LOCALAPPDATA%\DSHTray\dshtray.log` —— 托盘自身操作记录(启动 / 停止 / 重启 / 提权 / 自动重启等),超 5MB 自动轮转为 `dshtray.log.old`
-- `%LOCALAPPDATA%\DSHTray\dsh.log` —— harness 输出,独立于托盘生命周期(托盘退出后仍在写入)
+- `%LOCALAPPDATA%\dsh-tray\tray.log` —— 托盘自身操作记录(启动 / 停止 / 重启 / 提权 / 自动重启等),超 5MB 自动轮转为 `tray.log.old`
+- `%LOCALAPPDATA%\dsh-tray\harness.log` —— harness 输出,独立于托盘生命周期(托盘退出后仍在写入)
 - 托盘菜单「打开日志」会同时打开这两个文件
 
 ## FAQ

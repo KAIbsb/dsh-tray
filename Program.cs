@@ -355,8 +355,24 @@ static class Program
     {
         logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "DSHTray", "dshtray.log");
+            "dsh-tray", "tray.log");
         try { Directory.CreateDirectory(Path.GetDirectoryName(logPath)); } catch { }
+        // one-time migration from the old log directory name
+        try
+        {
+            string oldDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DSHTray");
+            string newDir = Path.GetDirectoryName(logPath);
+            if (Directory.Exists(oldDir) && oldDir != newDir)
+            {
+                string oldTray = Path.Combine(oldDir, "dshtray.log");
+                string oldHarness = Path.Combine(oldDir, "dsh.log");
+                if (File.Exists(oldTray) && !File.Exists(logPath)) File.Copy(oldTray, logPath);
+                string newHarness = Path.Combine(newDir, "harness.log");
+                if (File.Exists(oldHarness) && !File.Exists(newHarness)) File.Copy(oldHarness, newHarness);
+            }
+        }
+        catch { }
     }
 
     static void PollTick()
@@ -658,7 +674,7 @@ static class Program
         {
             // spawn via cmd with stdout/stderr redirected to a FILE: the harness must not
             // depend on the tray's lifetime (a broken pipe EPIPE kills node in ~1s)
-            string dshLog = Path.Combine(Path.GetDirectoryName(logPath), "dsh.log");
+            string dshLog = Path.Combine(Path.GetDirectoryName(logPath), "harness.log");
             string cmdArgs = "/c \"\"" + NodePath + "\" \"" + DshEntry + "\" web >> \"" + dshLog + "\" 2>&1\"";
             var psi = new ProcessStartInfo
             {
@@ -1100,7 +1116,7 @@ static class Program
                 Arguments = "\"" + logPath + "\"",
                 UseShellExecute = false
             });
-            string dshLog = Path.Combine(Path.GetDirectoryName(logPath), "dsh.log");
+            string dshLog = Path.Combine(Path.GetDirectoryName(logPath), "harness.log");
             if (File.Exists(dshLog))
             {
                 Process.Start(new ProcessStartInfo
