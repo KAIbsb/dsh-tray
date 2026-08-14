@@ -1,6 +1,6 @@
 # dsh-tray
 
-**English | [简体中文](../README.md)**
+**[简体中文](../README.md) | English**
 
 A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness): start / restart / stop / auto-restart on crash, all from the tray's right-click menu. No terminal needed, no risk of accidentally closing the window — works best paired with an application-mode window.
 
@@ -76,7 +76,7 @@ Right-click the tray icon:
 
 | Action | Behavior |
 | --- | --- |
-| Left click (single or double) | Not running: start and open the window; running: open the window |
+| Left click on the tray icon | Not running: start and open the window; running: open the window |
 | Right click | Shows the menu only |
 
 ### Status icon
@@ -157,7 +157,6 @@ No. It only works locally: starting/stopping local processes and reading/writing
 
 - Version info: show the version number in the exe's file properties (right-click → Details)
 - Localized UI (English menu)
-- Keep the Chrome application-mode window as the browser solution (zero maintenance; no plans for a custom shell)
 
 ## License
 

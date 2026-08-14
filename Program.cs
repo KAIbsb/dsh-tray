@@ -173,8 +173,7 @@ static class Program
     static int lastAutoRestartTick;
     static bool menuShowing;
     static Form menuOwner;
-    static System.Windows.Forms.Timer leftClickTimer;
-    static bool leftClickPending;
+    static int lastLeftClickTick = -1000;
 
     // ---- integrity (elevation) helpers ----
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -471,29 +470,17 @@ static class Program
             if (e.Button == MouseButtons.Right) { ShowTrayMenu(); return; }
             if (e.Button == MouseButtons.Left)
             {
-                // debounce: a second click within the interval counts as a double-click
-                leftClickPending = true;
-                if (leftClickTimer == null)
-                {
-                    leftClickTimer = new System.Windows.Forms.Timer();
-                    leftClickTimer.Interval = 300;
-                    leftClickTimer.Tick += delegate
-                    {
-                        leftClickTimer.Stop();
-                        if (leftClickPending)
-                        {
-                            leftClickPending = false;
-                            StartAndOpen();
-                        }
-                    };
-                }
-                leftClickTimer.Stop();
-                leftClickTimer.Start();
+                // single-click action only: swallow a second click within 300 ms
+                // so an accidental double-click never opens two windows
+                int now = Environment.TickCount;
+                if (now - lastLeftClickTick < 300) { lastLeftClickTick = now; return; }
+                lastLeftClickTick = now;
+                StartAndOpen();
             }
         };
     }
 
-    // left single/double click: ensure the harness is up, then open the window
+    // left click: ensure the harness is up, then open the window
     static void StartAndOpen()
     {
         if (!IsDshUp())
