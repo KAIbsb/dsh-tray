@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Compile DSHTray.exe
+      - name: Compile dsh-tray.exe
         shell: pwsh
         run: |
           $fx = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
@@ -24,21 +24,21 @@ jobs:
             /resource:assets\whale-blue.png,DSHTray.blue.png `
             /resource:assets\whale-dark.png,DSHTray.dark.png `
             "/r:$fx\System.Drawing.dll" "/r:$fx\System.Windows.Forms.dll" `
-            /out:DSHTray.exe Program.cs
+            /out:dsh-tray.exe Program.cs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Get-Item DSHTray.exe | Select-Object Name, Length
+          Get-Item dsh-tray.exe | Select-Object Name, Length
 
       - name: Generate SHA256 checksum
         shell: pwsh
         run: |
-          $hash = (Get-FileHash DSHTray.exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash  DSHTray.exe" | Set-Content -Encoding ascii DSHTray.exe.sha256
-          Get-Content DSHTray.exe.sha256
+          $hash = (Get-FileHash dsh-tray.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  dsh-tray.exe" | Set-Content -Encoding ascii dsh-tray.exe.sha256
+          Get-Content dsh-tray.exe.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            DSHTray.exe
-            DSHTray.exe.sha256
+            dsh-tray.exe
+            dsh-tray.exe.sha256
           generate_release_notes: true

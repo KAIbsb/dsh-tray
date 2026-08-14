@@ -15,12 +15,146 @@ using Microsoft.Win32;
 
 static class Program
 {
-    // ---- fixed-machine paths ----
-    const string NodePath   = @"C:\Program Files\nodejs\node.exe";
-    const string DshEntry   = @"C:\Users\KAI\AppData\Roaming\npm\node_modules\@deepseek-ai\dsh\lib\bin.js";
-    const string DshWorkDir = @"C:\Users\KAI\AppData\Roaming\npm\node_modules\@deepseek-ai\dsh";
-    const string ChromePath = @"C:\Users\KAI\AppData\Local\Google\Chrome\Application\chrome.exe";
-    const string WebUrl     = "http://127.0.0.1:3080";
+    // ---- runtime configuration: resolved from dshtray.ini (next to exe) or auto-detected ----
+    static string NodePath;
+    static string DshEntry;
+    static string DshWorkDir;
+    static string ChromePath;
+    static string WebUrl = "http://127.0.0.1:3080";
+    static int Port = 3080;
+
+    static void InitConfig()
+    {
+        LoadIniConfig();
+        if (string.IsNullOrEmpty(NodePath) || !File.Exists(NodePath)) NodePath = DetectNode();
+        if (string.IsNullOrEmpty(DshEntry) || !File.Exists(DshEntry)) DshEntry = DetectDshEntry();
+        if (string.IsNullOrEmpty(DshWorkDir) && !string.IsNullOrEmpty(DshEntry))
+            DshWorkDir = Path.GetDirectoryName(Path.GetDirectoryName(DshEntry));
+        if (string.IsNullOrEmpty(ChromePath) || !File.Exists(ChromePath)) ChromePath = DetectChrome();
+        Log("Config: node=" + (NodePath ?? "NOT FOUND") +
+            " | dshEntry=" + (DshEntry ?? "NOT FOUND") +
+            " | chrome=" + (ChromePath ?? "NOT FOUND") +
+            " | url=" + WebUrl);
+    }
+
+    // optional dshtray.ini next to the exe; keys: node, dshentry, dshworkdir, chrome, url, port
+    static void LoadIniConfig()
+    {
+        try
+        {
+            string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
+            if (!File.Exists(ini)) return;
+            foreach (string raw in File.ReadAllLines(ini))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0 || line.StartsWith("#") || line.StartsWith(";")) continue;
+                int eq = line.IndexOf('=');
+                if (eq <= 0) continue;
+                string key = line.Substring(0, eq).Trim().ToLowerInvariant();
+                string val = line.Substring(eq + 1).Trim();
+                switch (key)
+                {
+                    case "node": NodePath = val; break;
+                    case "dshentry": DshEntry = val; break;
+                    case "dshworkdir": DshWorkDir = val; break;
+                    case "chrome": ChromePath = val; break;
+                    case "url":
+                        WebUrl = val;
+                        try { Port = new Uri(val).Port; } catch { }
+                        break;
+                    case "port":
+                        int p;
+                        if (int.TryParse(val, out p) && p > 0)
+                        {
+                            Port = p;
+                            WebUrl = "http://127.0.0.1:" + p;
+                        }
+                        break;
+                }
+            }
+        }
+        catch { }
+    }
+
+    static string FindOnPath(string exe)
+    {
+        try
+        {
+            string pathVar = Environment.GetEnvironmentVariable("PATH");
+            if (pathVar == null) return null;
+            foreach (string dir in pathVar.Split(';'))
+            {
+                string d = dir.Trim().Trim('"');
+                if (d.Length == 0) continue;
+                string candidate = Path.Combine(d, exe);
+                if (Path.IsPathRooted(candidate) && File.Exists(candidate)) return candidate;
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    static string DetectNode()
+    {
+        string onPath = FindOnPath("node.exe");
+        if (onPath != null) return onPath;
+        string pf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe");
+        return File.Exists(pf) ? pf : null;
+    }
+
+    static string DetectDshEntry()
+    {
+        // 1. dsh shim on PATH -> sibling node_modules\@deepseek-ai\dsh\lib\bin.js
+        string shim = FindOnPath("dsh.cmd");
+        if (shim == null) shim = FindOnPath("dsh");
+        if (shim != null)
+        {
+            string entry = Path.Combine(Path.GetDirectoryName(shim), "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+            if (File.Exists(entry)) return entry;
+        }
+        // 2. default npm global location (%APPDATA%\npm)
+        string npmGlobal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm");
+        string entry2 = Path.Combine(npmGlobal, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
+        if (File.Exists(entry2)) return entry2;
+        // 3. npm root -g
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "cmd.exe",
+                Arguments = "/c npm root -g",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            };
+            using (var p = Process.Start(psi))
+            {
+                string root = p.StandardOutput.ReadToEnd().Trim();
+                p.WaitForExit(3000);
+                if (root.Length > 0 && Directory.Exists(root))
+                {
+                    string entry3 = Path.Combine(root, "@deepseek-ai", "dsh", "lib", "bin.js");
+                    if (File.Exists(entry3)) return entry3;
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
+
+    static string DetectChrome()
+    {
+        string[] candidates = {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Google", "Chrome", "Application", "chrome.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe")
+        };
+        foreach (string c in candidates)
+            if (File.Exists(c)) return c;
+        return null;
+    }
 
     static NotifyIcon tray;
     static Icon whiteIcon;
@@ -140,6 +274,7 @@ static class Program
     static void Main()
     {
         InitLog();
+        InitConfig();
         selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
         autoRestartEnabled = LoadAutoRestart();
 
@@ -158,7 +293,7 @@ static class Program
         }
 
         bool createdNew;
-        mutex = new Mutex(false, "DSHTray_SingleInstance", out createdNew);
+        mutex = new Mutex(false, "dsh-tray_SingleInstance", out createdNew);
         bool acquired;
         try { acquired = mutex.WaitOne(0, false); }
         catch (AbandonedMutexException) { acquired = true; } // previous instance crashed; take over
@@ -244,9 +379,9 @@ static class Program
             sb.AppendLine("blue icon resource=" + (rs != null));
         using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("DSHTray.dark.png"))
             sb.AppendLine("dark icon resource=" + (rs2 != null));
-        sb.AppendLine("port3080 open=" + PortOpen(3080));
-        int p3080 = FindPidOnPort(3080);
-        sb.AppendLine("pid on 3080=" + p3080);
+        sb.AppendLine("port" + Port + " open=" + PortOpen(Port));
+        int p3080 = FindPidOnPort(Port);
+        sb.AppendLine("pid on port=" + p3080);
         if (p3080 > 0) sb.AppendLine("pid integrity=" + GetIntegrity(p3080));
         sb.AppendLine("SMOKE OK");
         try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch { }
@@ -456,12 +591,21 @@ static class Program
     {
         try
         {
-            Process.Start(new ProcessStartInfo
+            if (ChromePath != null && File.Exists(ChromePath))
             {
-                FileName = ChromePath,
-                Arguments = "--app=" + WebUrl,
-                UseShellExecute = false
-            });
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = ChromePath,
+                    Arguments = "--app=" + WebUrl,
+                    UseShellExecute = false
+                });
+            }
+            else
+            {
+                // no Chrome/Edge found: open in the default browser
+                Process.Start(WebUrl);
+                Log("OpenWindow: no chrome/edge found, opened in default browser");
+            }
         }
         catch (Exception ex) { Log("OpenWindow failed: " + ex.Message); }
     }
@@ -481,6 +625,8 @@ static class Program
     {
         userStopped = false;
         lastStartTick = Environment.TickCount;
+        if (NodePath == null || !File.Exists(NodePath)) { Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return; }
+        if (DshEntry == null || !File.Exists(DshEntry)) { Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return; }
         if (IsDshUp()) { Log("StartDsh: already up, skip"); return; }
         try
         {
@@ -516,9 +662,9 @@ static class Program
         }
         dshProc = null;
 
-        if (PortOpen(3080))
+        if (PortOpen(Port))
         {
-            int pid = FindPidOnPort(3080);
+            int pid = FindPidOnPort(Port);
             if (pid > 0)
             {
                 Log("StopDsh: killing external pid=" + pid);
@@ -526,7 +672,7 @@ static class Program
             }
         }
         WaitForPortFree(8000);
-        Log("StopDsh: done, port open=" + PortOpen(3080));
+        Log("StopDsh: done, port open=" + PortOpen(Port));
     }
 
     // kill a pid + its tree; elevate if the target runs at higher integrity
@@ -637,23 +783,23 @@ static class Program
     static void WaitForPortFree(int timeoutMs)
     {
         int waited = 0;
-        while (PortOpen(3080) && waited < timeoutMs)
+        while (PortOpen(Port) && waited < timeoutMs)
         {
             Thread.Sleep(200);
             waited += 200;
         }
-        if (waited >= timeoutMs && PortOpen(3080)) Log("WaitForPortFree: timed out, port still open");
+        if (waited >= timeoutMs && PortOpen(Port)) Log("WaitForPortFree: timed out, port still open");
     }
 
     static void WaitForPortUp(int timeoutMs)
     {
         int waited = 0;
-        while (!PortOpen(3080) && waited < timeoutMs)
+        while (!PortOpen(Port) && waited < timeoutMs)
         {
             Thread.Sleep(200);
             waited += 200;
         }
-        Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(3080));
+        Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(Port));
     }
 
     // find Chrome top-level windows whose title matches the DSH webui and send Ctrl+R
@@ -714,7 +860,7 @@ static class Program
     static bool IsDshUp()
     {
         if (dshProc != null && !dshProc.HasExited) return true;
-        return PortOpen(3080);
+        return PortOpen(Port);
     }
 
     static bool PortOpen(int port)
@@ -863,7 +1009,7 @@ static class Program
             using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false))
             {
                 if (k == null) return false;
-                return k.GetValue("DSHTray") != null;
+                return k.GetValue("dsh-tray") != null;
             }
         }
         catch { return false; }
@@ -877,8 +1023,8 @@ static class Program
             using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
             {
                 if (k == null) return;
-                if (want) k.SetValue("DSHTray", "\"" + Application.ExecutablePath + "\"");
-                else k.DeleteValue("DSHTray", false);
+                if (want) k.SetValue("dsh-tray", "\"" + Application.ExecutablePath + "\"");
+                else k.DeleteValue("dsh-tray", false);
             }
             Log("autostart = " + want);
         }

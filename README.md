@@ -1,4 +1,4 @@
-# DSHTray — DeepSeek Harness 托盘管家
+# dsh-tray — DeepSeek Harness 托盘管家
 
 Windows 托盘小程序,管理 [DeepSeek Harness](https://github.com/deepseek-ai/dsh) 的生命周期。不用开终端、不怕误关窗口:启动、重启、停止、崩溃自动拉起,全部在托盘里一键完成。
 
@@ -19,8 +19,8 @@ Windows 托盘小程序,管理 [DeepSeek Harness](https://github.com/deepseek-ai
 
 > 仓库地址待定,发布后替换下方链接。
 
-- 从 [Releases](https://github.com/<owner>/<repo>/releases) 下载最新的 `DSHTray.exe` —— **单文件,无需安装任何运行时**(Windows 10/11 自带 .NET Framework 4.8)
-- 可选:核对 `DSHTray.exe.sha256` 校验和(`Get-FileHash DSHTray.exe -Algorithm SHA256`)
+- 从 [Releases](https://github.com/<owner>/<repo>/releases) 下载最新的 `dsh-tray.exe` —— **单文件,无需安装任何运行时**(Windows 10/11 自带 .NET Framework 4.8)
+- 可选:核对 `dsh-tray.exe.sha256` 校验和(`Get-FileHash dsh-tray.exe -Algorithm SHA256`)
 - 双击即可运行
 - **首次运行提示**:未签名的个人工具会被 SmartScreen 提示「未知发布者」——点「更多信息」→「仍要运行」即可(详见 FAQ)
 - 想自己编译请看下方「构建(从源码)」
@@ -60,11 +60,11 @@ chrome.exe --app=http://127.0.0.1:3080
 
 之后托盘菜单「打开窗口」会自动拉起这个独立窗口(等价于 `chrome --app`),与标签页互不干扰。窗口关了不影响 harness,想再开点一下托盘即可。
 
-### 4. 运行 DSHTray
+### 4. 运行 dsh-tray
 
 ```bash
 # 直接双击即可,无需命令行
-DSHTray.exe
+dsh-tray.exe
 ```
 
 托盘出现鲸鱼图标,自动启动 harness(无终端窗口、无闪窗)。右键图标弹出菜单:
@@ -106,13 +106,13 @@ csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
   /resource:assets\whale-blue.png,DSHTray.blue.png ^
   /resource:assets\whale-dark.png,DSHTray.dark.png ^
   /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:DSHTray.exe Program.cs
+  /out:dsh-tray.exe Program.cs
 ```
 
 ## 目录结构
 
 ```
-DSHTray.exe           托盘程序(单文件,图标内嵌)
+dsh-tray.exe           托盘程序(单文件,图标内嵌)
 Program.cs            全部源码
 app.manifest          DPI 感知 + asInvoker 权限清单
 assets/
