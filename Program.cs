@@ -13,8 +13,16 @@ using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
+[assembly: AssemblyTitle("dsh-tray")]
+[assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
+[assembly: AssemblyVersion("1.0.0.0")]
+[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyProduct("dsh-tray")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
+
 static class Program
 {
+    const string AppVersion = "1.0.0.0";
     // ---- runtime configuration: resolved from dshtray.ini (next to exe) or auto-detected ----
     static string NodePath;
     static string DshEntry;
@@ -320,7 +328,7 @@ static class Program
 
         darkMode = IsDarkMode();
         ApplyAppTheme();
-        Log("=== DSHTray started (integrity=" + selfIntegrity + ", autoRestart=" + autoRestartEnabled +
+        Log("=== dsh-tray v" + AppVersion + " started (integrity=" + selfIntegrity + ", autoRestart=" + autoRestartEnabled +
             ", darkMode=" + darkMode + ") ===");
 
         BuildTray();

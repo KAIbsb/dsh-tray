@@ -154,11 +154,6 @@ Autostart records the exe's path at the time it was enabled. After moving the ex
 
 No. It only works locally: starting/stopping local processes and reading/writing the registry and logs. The only external call is launching your local browser when you choose "Open Window".
 
-## Roadmap
-
-- Version info: show the version number in the exe's file properties (right-click → Details)
-- Localized UI (English menu)
-
 ## License
 
 [MIT License](../LICENSE) — free to use, modify, distribute and use commercially; just keep the copyright notice.
