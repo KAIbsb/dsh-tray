@@ -42,10 +42,26 @@ static class Program
         if (string.IsNullOrEmpty(DshWorkDir) && !string.IsNullOrEmpty(DshEntry))
             DshWorkDir = Path.GetDirectoryName(Path.GetDirectoryName(DshEntry));
         if (string.IsNullOrEmpty(ChromePath) || !File.Exists(ChromePath)) ChromePath = DetectChrome();
+        InitBrowserNames();
         Log("Config: node=" + (NodePath ?? "NOT FOUND") +
             " | dshEntry=" + (DshEntry ?? "NOT FOUND") +
             " | chrome=" + (ChromePath ?? "NOT FOUND") +
             " | url=" + WebUrl);
+    }
+
+    // process names whose windows we refresh on restart: the configured browser + chrome/msedge fallbacks
+    static List<string> browserNames = new List<string>();
+
+    static void InitBrowserNames()
+    {
+        browserNames.Clear();
+        if (!string.IsNullOrEmpty(ChromePath))
+        {
+            string n = Path.GetFileNameWithoutExtension(ChromePath);
+            if (!string.IsNullOrEmpty(n)) browserNames.Add(n.ToLowerInvariant());
+        }
+        if (!browserNames.Contains("chrome")) browserNames.Add("chrome");
+        if (!browserNames.Contains("msedge")) browserNames.Add("msedge");
     }
 
     // optional dshtray.ini next to the exe; keys: node, dshentry, dshworkdir, chrome, url, port
@@ -407,9 +423,9 @@ static class Program
         sb.AppendLine("self integrity=" + selfIntegrity);
         sb.AppendLine("autoRestart=" + autoRestartEnabled);
         sb.AppendLine("ui lang=" + Lang.Code);
-        using (Stream rs = Assembly.GetExecutingAssembly().GetManifestResourceStream("DSHTray.blue.png"))
+        using (Stream rs = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-blue.png"))
             sb.AppendLine("blue icon resource=" + (rs != null));
-        using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("DSHTray.dark.png"))
+        using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-dark.png"))
             sb.AppendLine("dark icon resource=" + (rs2 != null));
         sb.AppendLine("port" + Port + " open=" + PortOpen(Port));
         int p3080 = FindPidOnPort(Port);
@@ -431,7 +447,7 @@ static class Program
             try
             {
                 var p = Process.GetProcessById((int)pid);
-                if (p.ProcessName.Equals("chrome", StringComparison.OrdinalIgnoreCase))
+                if (browserNames.Contains(p.ProcessName.ToLowerInvariant()))
                 {
                     var t = new StringBuilder(256);
                     GetWindowText(hWnd, t, 256);
@@ -493,8 +509,8 @@ static class Program
         tray.Text = Lang.T("tray.title");
         tray.Visible = true;
         try { whiteIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
-        blueIcon = BuildIconFromResource("DSHTray.blue.png");
-        darkIcon = BuildIconFromResource("DSHTray.dark.png");
+        blueIcon = BuildIconFromResource("whale-blue.png");
+        darkIcon = BuildIconFromResource("whale-dark.png");
         tray.Icon = whiteIcon != null ? whiteIcon : SystemIcons.Application;
         tray.MouseUp += delegate(object s, MouseEventArgs e)
         {
@@ -859,7 +875,7 @@ static class Program
                 try
                 {
                     var p = Process.GetProcessById((int)pid);
-                    if (p.ProcessName.Equals("chrome", StringComparison.OrdinalIgnoreCase))
+                    if (browserNames.Contains(p.ProcessName.ToLowerInvariant()))
                     {
                         var sb = new StringBuilder(256);
                         GetWindowText(hWnd, sb, 256);
@@ -1077,9 +1093,20 @@ static class Program
     {
         try
         {
-            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\DSHTray", false))
+            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\dsh-tray", false))
             {
-                if (k == null) return false;
+                if (k == null)
+                {
+                    // one-time migration from the old key name
+                    using (var old = Registry.CurrentUser.OpenSubKey(@"Software\DSHTray", false))
+                    {
+                        if (old == null) return false;
+                        object ov = old.GetValue("AutoRestart");
+                        bool val = ov != null && Convert.ToInt32(ov) == 1;
+                        if (val) SaveAutoRestart(); // copy into the new key
+                        return val;
+                    }
+                }
                 object v = k.GetValue("AutoRestart");
                 return v != null && Convert.ToInt32(v) == 1;
             }
@@ -1091,7 +1118,7 @@ static class Program
     {
         try
         {
-            using (var k = Registry.CurrentUser.CreateSubKey(@"Software\DSHTray"))
+            using (var k = Registry.CurrentUser.CreateSubKey(@"Software\dsh-tray"))
             {
                 k.SetValue("AutoRestart", autoRestartEnabled ? 1 : 0);
             }

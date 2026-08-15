@@ -6,7 +6,7 @@
 
 - Windows 10/11(自带 .NET Framework 4.8 与编译器 `csc.exe`)
 - Node.js + DeepSeek Harness(运行与调试对象)
-- 可选:Google Chrome(浏览器 APP 模式窗口)
+- 可选:Chromium 系浏览器(Chrome / Edge 等,用于浏览器 APP 模式窗口)
 
 ## 项目结构
 
@@ -14,7 +14,7 @@
 Program.cs              主程序(全部逻辑)
 Lang.cs                 界面语言表(zh / en)
 app.manifest            DPI 感知 + asInvoker 权限清单
-assets/DSHTray.ico      exe 图标(win32icon)
+assets/whale-white.ico  exe 图标(win32icon)
 assets/whale-blue.png   运行状态图标(内嵌资源)
 assets/whale-dark.png   浅色主题停止图标(内嵌资源)
 .github/workflows/      Release 自动化
@@ -25,10 +25,10 @@ docs/                   README 英文版、本文档
 
 ```bat
 csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
-  /win32icon:assets\DSHTray.ico ^
+  /win32icon:assets\whale-white.ico ^
   /win32manifest:app.manifest ^
-  /resource:assets\whale-blue.png,DSHTray.blue.png ^
-  /resource:assets\whale-dark.png,DSHTray.dark.png ^
+  /resource:assets\whale-blue.png,whale-blue.png ^
+  /resource:assets\whale-dark.png,whale-dark.png ^
   /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
   /out:dsh-tray.exe Program.cs Lang.cs
 ```
@@ -47,7 +47,7 @@ csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
 - **判活**:TCP 探测 `127.0.0.1:Port`(默认 3080);找 PID 用 `netstat -ano` 解析
 - **停止 / 重启**:`taskkill /T /F` 杀进程树;若目标进程完整性级别高于自身(如管理员启动的 harness),以管理员身份重跑自身(`--elevated-kill <pid>`)执行杀进程(UAC 为「从不通知」时静默完成)
 - **原生菜单**:`CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`。深色模式靠 `uxtheme.dll` 的 `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)` 跟随系统;弹菜单前 owner 窗口必须置前台(`SetForegroundWindow` + ALT 键技巧),否则菜单无法通过点击外部 / Esc 关闭
-- **窗口自动刷新**:枚举 Chrome 顶层窗口,对标题含 "DeepSeek Harness" 的窗口发送 Ctrl+R(先置前台,抢不到焦点则跳过)
+- **窗口自动刷新**:枚举配置的浏览器顶层窗口(进程名取 `chrome` / `msedge`,或 ini `chrome` 指定的浏览器),对标题含 "DeepSeek Harness" 的窗口发送 Ctrl+R(先置前台,抢不到焦点则跳过)
 - **配置**:`dshtray.ini`(见 README「配置」);node / dsh / chrome 路径自动探测(PATH、常见安装路径、npm 全局目录)
 - **界面语言**:`Lang.cs`;优先级 `dshtray.ini` 的 `lang` 覆盖 > 系统 UI 语言
 
@@ -64,16 +64,7 @@ csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
 
 ## 图标与资源
 
-鲸鱼图标取自 DeepSeek Harness 前端包内的 `favicon.svg`(路径:`dsh-web-frontend/dist/favicon.svg`,位于 npm 安装目录)。本地保留一套图标生成工具(不入库,见 `.gitignore`):
-
-- `make_whale_svg.js` — 提取 SVG 路径数据,强制填充色输出为新的 SVG
-- `IconBuilder.cs` — 将 SVG 路径(仅 M/C/Z 命令)解析为 `GraphicsPath`,渲染多尺寸 ICO / PNG,填充色可指定
-
-重新生成状态图标示例:
-
-```bat
-IconBuilder.exe assets\whale-white.svg out.ico out.png <fill-hex>
-```
+鲸鱼图标取自 DeepSeek Harness 前端包内的 `favicon.svg`(`dsh-web-frontend/dist/favicon.svg`)。
 
 ## 已知约定
 

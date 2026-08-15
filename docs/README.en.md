@@ -5,6 +5,10 @@
 A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness): start / restart / stop / auto-restart on crash, all from the tray's right-click menu. No terminal needed, no risk of accidentally closing the window — works best paired with a browser app-mode window.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
+[![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)]()
+[![Language: C#](https://img.shields.io/badge/language-C%23-239120.svg)]()
+
+> **Disclaimer**: This project is the product of pure "vibe coding" — no rigorous testing or code review, and unknown bugs may exist. Use at your own risk. If you run into issues, please report them on [Issues](https://github.com/KAIbsb/dsh-tray/issues).
 
 ## Features
 
@@ -36,11 +40,11 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 | Windows 10/11 | .NET Framework 4.8, built in |
 | Node.js | required to run the harness |
 | DeepSeek Harness | install it per the [DeepSeek-Harness repo](https://github.com/deepseek-ai/DeepSeek-Harness) |
-| Google Chrome | optional, for the browser app-mode window |
+| Browser (Chromium-based: Chrome / Edge) | optional, for the browser app-mode window |
 
 ### 2. Create a browser app-mode window (optional but recommended)
 
-The harness Web UI lives at `http://127.0.0.1:3080`. To keep it out of your browser tabs, turn it into a standalone browser app-mode window (how to create one is left to you — search "Chrome app mode").
+The harness Web UI lives at `http://127.0.0.1:3080`. To keep it out of your browser tabs, turn it into a standalone browser app-mode window (how to create one is left to you — search "browser app mode").
 
 The tray's "Open Window" menu item will then launch this window. Closing it does not affect the harness — click the tray icon to reopen it anytime.
 
@@ -84,7 +88,7 @@ Exit            ← exits the tray only; the harness keeps running (use Stop to 
 
 ## Configuration
 
-No configuration is needed — node, dsh and Chrome are auto-detected. For special environments, create a `dshtray.ini` next to the exe to override (all keys optional):
+No configuration is needed — node, dsh and the browser are auto-detected. For special environments, create a `dshtray.ini` next to the exe to override (all keys optional):
 
 ```ini
 # dshtray.ini (optional)
@@ -96,7 +100,7 @@ port = 3080
 lang = en        # UI language zh/en; defaults to the system UI language
 ```
 
-Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory).
+Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory). Chrome and Edge are auto-detected; for other Chromium-based browsers (Brave / Opera / Vivaldi etc.) point the `chrome` key at their exe.
 
 ## Logs
 

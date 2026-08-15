@@ -6,7 +6,7 @@ Repository structure and development guide for dsh-tray — for developers who w
 
 - Windows 10/11 (ships .NET Framework 4.8 and the `csc.exe` compiler)
 - Node.js + DeepSeek Harness (the thing this tool manages)
-- Optional: Google Chrome (browser app-mode window)
+- Optional: a Chromium-based browser (Chrome / Edge etc., for the browser app-mode window)
 
 ## Repository layout
 
@@ -14,7 +14,7 @@ Repository structure and development guide for dsh-tray — for developers who w
 Program.cs              main program (all logic)
 Lang.cs                 UI language table (zh / en)
 app.manifest            DPI awareness + asInvoker manifest
-assets/DSHTray.ico      exe icon (win32icon)
+assets/whale-white.ico  exe icon (win32icon)
 assets/whale-blue.png   running-state icon (embedded resource)
 assets/whale-dark.png   light-theme stopped icon (embedded resource)
 .github/workflows/      release automation
@@ -25,10 +25,10 @@ docs/                   English README, this document
 
 ```bat
 csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
-  /win32icon:assets\DSHTray.ico ^
+  /win32icon:assets\whale-white.ico ^
   /win32manifest:app.manifest ^
-  /resource:assets\whale-blue.png,DSHTray.blue.png ^
-  /resource:assets\whale-dark.png,DSHTray.dark.png ^
+  /resource:assets\whale-blue.png,whale-blue.png ^
+  /resource:assets\whale-dark.png,whale-dark.png ^
   /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
   /out:dsh-tray.exe Program.cs Lang.cs
 ```
@@ -47,7 +47,7 @@ csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
 - **Liveness check**: TCP probe to `127.0.0.1:Port` (default 3080); PIDs are resolved by parsing `netstat -ano`
 - **Stop / restart**: `taskkill /T /F` kills the process tree; if the target runs at a higher integrity level (e.g. an admin-started harness), the tray re-launches itself elevated (`--elevated-kill <pid>`) to kill it (silent when UAC is "never notify")
 - **Native menu**: `CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`. Dark mode follows the system via `uxtheme.dll` `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)`; the owner window must be brought to the foreground before showing the menu (`SetForegroundWindow` + ALT-key trick), otherwise the menu won't dismiss on outside clicks / Esc
-- **Auto-refresh**: enumerates Chrome top-level windows and sends Ctrl+R to windows whose title contains "DeepSeek Harness" (foreground first; skipped if focus can't be taken)
+- **Auto-refresh**: enumerates top-level windows of the configured browser (process names `chrome` / `msedge`, or whatever the ini `chrome` key points to) and sends Ctrl+R to windows whose title contains "DeepSeek Harness" (foreground first; skipped if focus can't be taken)
 - **Configuration**: `dshtray.ini` (see README "Configuration"); node / dsh / chrome paths are auto-detected (PATH, common install locations, npm global directory)
 - **UI language**: `Lang.cs`; precedence: `dshtray.ini` `lang` override > system UI language
 
@@ -64,16 +64,7 @@ Logs: `%LOCALAPPDATA%\dsh-tray\tray.log` (tray operations) + `harness.log` (harn
 
 ## Icons & assets
 
-The whale icon comes from `favicon.svg` inside the DeepSeek Harness frontend package (path: `dsh-web-frontend/dist/favicon.svg` under the npm install directory). A local set of icon-generation tools is kept out of the repo (see `.gitignore`):
-
-- `make_whale_svg.js` — extracts the SVG path data and emits a new SVG with a forced fill color
-- `IconBuilder.cs` — parses the SVG path (M/C/Z commands only) into a `GraphicsPath`, renders multi-size ICO / PNG with a configurable fill color
-
-Regenerating a status icon:
-
-```bat
-IconBuilder.exe assets\whale-white.svg out.ico out.png <fill-hex>
-```
+The whale icon comes from `favicon.svg` inside the DeepSeek Harness frontend package (`dsh-web-frontend/dist/favicon.svg`).
 
 ## Conventions
 

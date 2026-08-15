@@ -6,6 +6,10 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 不用开终端、不怕误关窗口，配合浏览器 APP 模式效果更佳！
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)]()
+[![Language: C#](https://img.shields.io/badge/language-C%23-239120.svg)]()
+
+> **免责声明**:本项目为纯「Vibe Coding」产物,未经严格测试与代码审查,可能存在未知 Bug。请自行评估风险后使用;如遇问题,欢迎到 [Issues](https://github.com/KAIbsb/dsh-tray/issues) 反馈。
 
 ## 功能特性
 
@@ -37,11 +41,11 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 | Windows 10/11 | .NET Framework 4.8 系统自带 |
 | Node.js | 运行 harness 所需 |
 | DeepSeek Harness | 安装方法见 [DeepSeek-Harness 仓库](https://github.com/deepseek-ai/DeepSeek-Harness) |
-| Google Chrome | 可选,用于浏览器 APP 模式窗口显示 |
+| 浏览器(Chrome / Edge 等 Chromium 系) | 可选,用于浏览器 APP 模式窗口显示 |
 
 ### 2. 创建浏览器 APP 模式窗口(可选但推荐)
 
-harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标签页的话,可以把它做成独立的浏览器 APP 模式窗口(具体创建方法请自行查阅,搜索「Chrome app mode」即可)。
+harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标签页的话,可以把它做成独立的浏览器 APP 模式窗口(具体创建方法请自行查阅,搜索「浏览器 app mode」即可)。
 
 之后托盘菜单「打开窗口」会自动拉起这个窗口;窗口关了不影响 harness,想再开点一下托盘即可。
 
@@ -85,7 +89,7 @@ harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标�
 
 ## 配置
 
-无需任何配置即可运行 —— node、dsh、Chrome 会自动探测。特殊环境可在 exe 同目录建 `dshtray.ini` 覆盖(全部项均可省略):
+无需任何配置即可运行 —— node、dsh、浏览器会自动探测。特殊环境可在 exe 同目录建 `dshtray.ini` 覆盖(全部项均可省略):
 
 ```ini
 # dshtray.ini(可选)
@@ -97,7 +101,7 @@ port = 3080
 lang = zh        # 界面语言 zh/en,缺省跟随系统
 ```
 
-优先级:ini 显式值 > 自动探测(PATH / 常见安装路径 / npm 全局目录)。
+优先级:ini 显式值 > 自动探测(PATH / 常见安装路径 / npm 全局目录)。Chrome / Edge 自动探测;其他 Chromium 系浏览器(Brave / Opera / Vivaldi 等)用 `chrome =` 指定即可。
 
 ## 日志
 
@@ -109,7 +113,7 @@ lang = zh        # 界面语言 zh/en,缺省跟随系统
 
 **SmartScreen 提示「未知发布者」怎么办?**
 
-dsh-tray 是未签名的小工具,首次运行会被 Windows SmartScreen 拦截。点「更多信息」→「仍要运行」即可。在意的话可以自己从源码构建(见[开发者文档](docs/DEVELOPMENT.md))。
+dsh-tray 是未签名的小工具,首次运行会被 Windows SmartScreen 拦截。点「更多信息」→「仍要运行」即可。在意的话可以自己从源码构建(见 [开发者文档](docs/DEVELOPMENT.md))。
 
 **退出托盘后 harness 还在运行?**
 
