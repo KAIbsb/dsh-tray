@@ -12,6 +12,11 @@ using System.Windows.Forms;
 // elevation, and the self-heal poll. Instance class (one per session); depends only on
 // Config / Win32 / Logging. The constructor has NO side effects, so headless modes can safely
 // construct one for probing.
+//
+// All state transitions happen inside `stateLock`; external callers only trigger actions
+// (Start/Stop/Restart), never write the state directly.
+public enum DshState { Stopped, Starting, Running, Stopping }
+
 class DshProcess
 {
     // ---- timing constants (moved verbatim; values unchanged) ----
@@ -28,22 +33,25 @@ class DshProcess
     const int AutoRestartRetryCooldownMs = 30000; // min gap between two auto-restart attempts
 
     readonly AppConfig cfg;
+    readonly object stateLock = new object();
+    DshState state = DshState.Stopped;   // all transitions happen under stateLock
     Process dshProc;
-    bool userStopped;
+    bool userStopped;                    // no longer publicly writable
     int lastStartTick;
     int lastAutoRestartTick;
     bool autoRestartEnabled;
-    string lastDshUpWarn;
     Win32.IntegrityLevel selfIntegrity;
-    volatile bool isStarting;
 
     public DshProcess(AppConfig config)
     {
         cfg = config;
     }
 
-    // true while an async start/restart is in flight (the tray flashes the icon while starting)
-    public bool IsStarting { get { return isStarting; } }
+    // current state snapshot (thread-safe)
+    public DshState State
+    {
+        get { lock (stateLock) return state; }
+    }
 
     // integrity level of THIS tray process; set by the caller (no side effects in the ctor)
     public Win32.IntegrityLevel SelfIntegrity
@@ -54,57 +62,40 @@ class DshProcess
 
     public bool AutoRestartEnabled
     {
-        get { return autoRestartEnabled; }
-        set { autoRestartEnabled = value; }
-    }
-
-    // whether the user manually stopped the harness (never auto-restart while true)
-    public bool UserStopped
-    {
-        get { return userStopped; }
-        set { userStopped = value; }
-    }
-
-    public bool IsUp
-    {
-        get
-        {
-            try
-            {
-                if (dshProc != null && !dshProc.HasExited) { lastDshUpWarn = null; return true; }
-            }
-            catch (Exception ex) { Logging.Log("IsUp process check failed: " + ex.Message); }
-            // process object may have been disposed concurrently (background thread vs UI); fall
-            // through to the port probe
-            if (!PortOpen(cfg.Port)) { lastDshUpWarn = null; return false; }
-            // port is open but we don't own the listener: only treat it as "up" if the owner is node
-            int pid = FindPidOnPort(cfg.Port);
-            if (pid <= 0) { LogDshUpWarnOnce("port " + cfg.Port + " open but no listener pid found"); return false; }
-            if (!IsNodeProcess(pid)) { LogDshUpWarnOnce("port " + cfg.Port + " owned by non-node pid=" + pid + "; treating as down"); return false; }
-            lastDshUpWarn = null;
-            return true;
-        }
+        get { lock (stateLock) return autoRestartEnabled; }
+        set { lock (stateLock) autoRestartEnabled = value; }
     }
 
     public void ToggleAutoRestart()
     {
-        autoRestartEnabled = !autoRestartEnabled;
-        Config.SaveAutoRestart(autoRestartEnabled);
-        Logging.Log("autoRestart = " + autoRestartEnabled);
+        AutoRestartEnabled = !AutoRestartEnabled;
+        Config.SaveAutoRestart(AutoRestartEnabled);
+        Logging.Log("autoRestart = " + AutoRestartEnabled);
     }
 
-    // self-heal poll: if auto-restart is on, the user hasn't stopped, and the harness is down
-    // past the cooldowns, restart it. Returns whether a restart was triggered.
+    // self-heal poll: only Stopped and not user-stopped, past the cooldowns, triggers a start.
+    // The CAS (Stopped->Starting) is done under the lock; the actual spawn/wait runs as a
+    // fire-and-forget flow so the poll (UI timer) never blocks or double-starts.
     public bool PollAutoRestart()
     {
-        // never auto-restart while an async start/restart is in flight (double-start race)
-        if (!isStarting && autoRestartEnabled && !userStopped && !IsUp &&
-            Environment.TickCount - lastStartTick > AutoRestartStartCooldownMs &&
-            Environment.TickCount - lastAutoRestartTick > AutoRestartRetryCooldownMs)
+        bool trigger;
+        lock (stateLock)
         {
-            lastAutoRestartTick = Environment.TickCount;
+            trigger = state == DshState.Stopped && autoRestartEnabled && !userStopped &&
+                Environment.TickCount - lastStartTick > AutoRestartStartCooldownMs &&
+                Environment.TickCount - lastAutoRestartTick > AutoRestartRetryCooldownMs;
+            if (trigger)
+            {
+                lastAutoRestartTick = Environment.TickCount;
+                state = DshState.Starting;
+            }
+        }
+        if (trigger)
+        {
             Logging.Log("AutoRestart: harness is down, restarting");
-            StartDsh();
+#pragma warning disable 4014 // fire-and-forget is intentional (poll must not await/block)
+            Task.Run(() => StartFlow());
+#pragma warning restore 4014
             return true;
         }
         return false;
@@ -127,13 +118,13 @@ class DshProcess
         psi.EnvironmentVariables["DSH_TRAY_LOG"] = dshLog;
     }
 
-    public void StartDsh()
+    // core spawn (no state transition): precondition checks + cmd spawn. Returns whether the
+    // process was actually launched. Called only while state == Starting.
+    bool StartCore()
     {
-        userStopped = false;
         lastStartTick = Environment.TickCount;
-        if (cfg.NodePath == null || !File.Exists(cfg.NodePath)) { Logging.Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return; }
-        if (cfg.DshEntry == null || !File.Exists(cfg.DshEntry)) { Logging.Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return; }
-        if (IsUp) { Logging.Log("StartDsh: already up, skip"); return; }
+        if (cfg.NodePath == null || !File.Exists(cfg.NodePath)) { Logging.Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return false; }
+        if (cfg.DshEntry == null || !File.Exists(cfg.DshEntry)) { Logging.Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return false; }
         try
         {
             // spawn via cmd with stdout/stderr redirected to a FILE: the harness must not
@@ -153,8 +144,9 @@ class DshProcess
             proc.Start();
             dshProc = proc;
             Logging.Log("StartDsh: launched pid=" + dshProc.Id + " (log=" + dshLog + ")");
+            return true;
         }
-        catch (Exception ex) { Logging.Log("StartDsh failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("StartDsh failed: " + ex.Message); return false; }
     }
 
     // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
@@ -164,19 +156,39 @@ class DshProcess
         try
         {
             var p = sender as Process;
-            Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1));
+            bool current;
+            lock (stateLock)
+            {
+                current = (p != null && ReferenceEquals(p, dshProc));
+                // only the live process exiting moves us to Stopped; never auto-restart here
+                // (the poll owns that decision)
+                if (current && (state == DshState.Running || state == DshState.Starting))
+                    state = DshState.Stopped;
+            }
+            Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1) + (current ? "" : " (stale)"));
         }
         catch { }
     }
 
-    public void StopDsh()
+    // core stop (no state transition): kill owned process + any node on the port, then wait for
+    // the port to free. Called only while state == Stopping.
+    void StopCore()
     {
-        bool owned = (dshProc != null && !dshProc.HasExited);
+        bool owned = false;
+        int ownedPid = 0;
+        lock (stateLock)
+        {
+            if (dshProc != null)
+            {
+                try { owned = !dshProc.HasExited; ownedPid = dshProc.Id; } catch { owned = false; }
+            }
+        }
         if (owned)
         {
-            Logging.Log("StopDsh: killing owned pid=" + dshProc.Id);
-            KillTree(dshProc.Id);
-            try { dshProc.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
+            Logging.Log("StopDsh: killing owned pid=" + ownedPid);
+            Process p = dshProc;
+            KillTree(ownedPid);
+            try { if (p != null) p.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
         }
         DisposeDshProc();
         dshProc = null;
@@ -203,60 +215,76 @@ class DshProcess
         Logging.Log("StopDsh: done, port open=" + PortOpen(cfg.Port));
     }
 
-    // process-level restart: stop then start then wait for the port. UI coordination (tray icon
-    // refresh, Chrome window reload) is the caller's job (TrayMenu), so this keeps no UI deps.
-    public void RestartDsh()
-    {
-        Logging.Log("=== RestartDsh ===");
-        StopDsh();
-        StartDsh();
-        WaitForPortUp();
-    }
+    // ---- async state machine (external callers trigger actions, never write state) ----
 
-    public void WaitForPortUp()
+    // CAS Stopped->Starting, then spawn + wait; only transitions to Running if still Starting
+    // (so StopAsync always wins and never gets overwritten). Returns when settled.
+    public async Task StartAsync()
     {
-        int waited = 0;
-        while (!PortOpen(cfg.Port) && waited < PortWaitMs)
+        lock (stateLock)
         {
-            Thread.Sleep(PortPollStepMs);
-            waited += PortPollStepMs;
+            if (state != DshState.Stopped) return;
+            state = DshState.Starting;
         }
-        Logging.Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(cfg.Port));
+        await StartFlow();
     }
 
-    // ---- async lifecycle (UI actions use these so the message pump is not blocked) ----
-
-    public async Task RestartAsync()
+    // continuation after the Starting handoff: shared by StartAsync and PollAutoRestart
+    async Task StartFlow()
     {
-        if (isStarting) return;
-        isStarting = true;
-        try
+        bool launched = StartCore(); // synchronous spawn (fast, non-blocking); no closure needed
+        bool up = launched && await WaitForPortUpAsync();
+        lock (stateLock)
         {
-            await Task.Run(() => { StopDsh(); StartDsh(); });
-            await WaitForPortUpAsync();
+            if (state == DshState.Starting)
+            {
+                state = up ? DshState.Running : DshState.Stopped;
+                if (up) userStopped = false;
+                else Logging.Log("StartAsync: start failed or port wait timed out");
+            }
         }
-        finally { isStarting = false; }
     }
 
-    public async Task StartAndWaitAsync()
-    {
-        if (isStarting) return;
-        isStarting = true;
-        try
-        {
-            await Task.Run(() => StartDsh());
-            await WaitForPortUpAsync();
-        }
-        finally { isStarting = false; }
-    }
-
+    // CAS Running/Starting -> Stopping, kill, then -> Stopped. Stop always beats a concurrent
+    // start (the start's final CAS only fires while still Starting, which stop has already moved).
     public async Task StopAsync()
     {
-        await Task.Run(() => StopDsh());
+        lock (stateLock)
+        {
+            if (state != DshState.Running && state != DshState.Starting) return;
+            userStopped = true;
+            state = DshState.Stopping;
+        }
+        await Task.Run(() => StopCore());
+        lock (stateLock) { state = DshState.Stopped; }
     }
 
-    // non-blocking port wait: Task.Delay instead of Thread.Sleep; same bounds and logging
-    async Task WaitForPortUpAsync()
+    // Running -> (stop -> start) via Stopping/Stopping->Stopped->Starting->Running; Starting or
+    // Stopping is a no-op (no double clicks); Stopped delegates to StartAsync.
+    public async Task RestartAsync()
+    {
+        DshState cur;
+        lock (stateLock)
+        {
+            cur = state;
+            if (cur == DshState.Starting || cur == DshState.Stopping) return;
+            if (cur == DshState.Running) { state = DshState.Stopping; userStopped = true; }
+        }
+        if (cur == DshState.Stopped)
+        {
+            await StartAsync();
+            return;
+        }
+        // cur == Running
+        Logging.Log("=== RestartDsh ===");
+        await Task.Run(() => StopCore());
+        lock (stateLock) { state = DshState.Stopped; userStopped = false; }
+        await StartAsync();
+    }
+
+    // non-blocking port wait: Task.Delay instead of Thread.Sleep; same bounds and logging.
+    // Returns whether the port came up.
+    async Task<bool> WaitForPortUpAsync()
     {
         int waited = 0;
         while (!PortOpen(cfg.Port) && waited < PortWaitMs)
@@ -264,7 +292,9 @@ class DshProcess
             await Task.Delay(PortPollStepMs).ConfigureAwait(false);
             waited += PortPollStepMs;
         }
-        Logging.Log("WaitForPortUpAsync: waited=" + waited + "ms up=" + PortOpen(cfg.Port));
+        bool up = PortOpen(cfg.Port);
+        Logging.Log("WaitForPortUpAsync: waited=" + waited + "ms up=" + up);
+        return up;
     }
 
     void WaitForPortFree()
@@ -549,17 +579,6 @@ class DshProcess
             }
         }
         catch { return false; }
-    }
-
-    // IsDshUp runs from the 3-second poll: log each distinct warning only once per
-    // episode (until the verdict turns healthy again) so the log is not flooded
-    void LogDshUpWarnOnce(string msg)
-    {
-        if (msg != lastDshUpWarn)
-        {
-            lastDshUpWarn = msg;
-            Logging.Log("IsDshUp: " + msg);
-        }
     }
 
     // Is the netstat local-address HOST (port suffix already stripped) a loopback/any

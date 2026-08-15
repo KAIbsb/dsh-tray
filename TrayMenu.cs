@@ -28,7 +28,7 @@ static class TrayMenu
     static bool flashing;
     static DshProcess dp;
     static string appVersion;
-    static bool lastUpState;
+    static DshState lastState = (DshState)(-1);   // forced mismatch so the first UpdateStatus applies
     static bool lastDarkState;
 
     // theme flag exposed so Program can log it on startup (set during Init before the tray builds)
@@ -44,12 +44,16 @@ static class TrayMenu
         // seed the change-detection cache with a forced mismatch so the first UpdateStatus
         // always applies the real icon/text (BuildTray only sets a provisional white icon)
         lastDarkState = !darkMode;
-        lastUpState = false;
+        lastState = (DshState)(-1);
         Logging.Log("=== dsh-tray v" + version + " started (integrity=" + dp.SelfIntegrity +
             ", autoRestart=" + dp.AutoRestartEnabled + ", darkMode=" + darkMode + ") ===");
         BuildTray();
-        dp.UserStopped = false;
-        if (!dp.IsUp) dp.StartDsh();
+        if (dp.State == DshState.Stopped)
+        {
+#pragma warning disable 4014 // fire-and-forget initial start; the icon flashes until running
+            dp.StartAsync();
+#pragma warning restore 4014
+        }
         UpdateStatus();
         pollTimer = new System.Windows.Forms.Timer();
         pollTimer.Interval = PollIntervalMs;
@@ -115,17 +119,12 @@ static class TrayMenu
     {
         try
         {
-            if (dp.IsStarting)
+            if (dp.State == DshState.Stopped)
             {
-                WindowMgr.OpenWindow(); // already starting: just open, don't start twice
-                return;
-            }
-            if (!dp.IsUp)
-            {
-                dp.UserStopped = false;
-                await dp.StartAndWaitAsync();
+                await dp.StartAsync();
                 UpdateStatus();
             }
+            // Starting/Running/Stopping: just open (start in flight or already up)
             WindowMgr.OpenWindow();
         }
         catch (Exception ex) { Logging.Log("StartAndOpen failed: " + ex.Message); }
@@ -137,29 +136,25 @@ static class TrayMenu
         menuShowing = true;
         try
         {
-            bool up = dp.IsUp;
+            DshState st = dp.State;
             var defs = new List<MenuDef>();
             defs.Add(new MenuDef(Lang.T("menu.open"), WindowMgr.OpenWindow, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new MenuDef(Lang.T("menu.start"), async delegate
             {
-                try { if (!dp.IsUp && !dp.IsStarting) await dp.StartAndWaitAsync(); UpdateStatus(); }
+                try { await dp.StartAsync(); UpdateStatus(); }
                 catch (Exception ex) { Logging.Log("start failed: " + ex.Message); UpdateStatus(); }
-            }, !up, false));
+            }, st == DshState.Stopped, false));
             defs.Add(new MenuDef(Lang.T("menu.restart"), async delegate
             {
                 try { await dp.RestartAsync(); WindowMgr.ReloadAppWindow(); UpdateStatus(); }
                 catch (Exception ex) { Logging.Log("restart failed: " + ex.Message); UpdateStatus(); }
-            }, up, false));
+            }, st == DshState.Running, false));
             defs.Add(new MenuDef(Lang.T("menu.stop"), async delegate
             {
-                try
-                {
-                    if (dp.IsUp) { dp.UserStopped = true; UpdateStatus(); await dp.StopAsync(); }
-                    UpdateStatus();
-                }
+                try { await dp.StopAsync(); UpdateStatus(); }
                 catch (Exception ex) { Logging.Log("stop failed: " + ex.Message); UpdateStatus(); }
-            }, up, false));
+            }, st == DshState.Running || st == DshState.Starting, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { new SettingsForm(dp, appVersion).ShowDialog(); }, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
@@ -293,35 +288,36 @@ static class TrayMenu
     static void UpdateStatus()
     {
         if (tray == null) return;
-        if (dp.IsStarting)
+        DshState st = dp.State;
+        if (st == DshState.Starting)
         {
-            // keep flashing; don't overwrite the icon with a static status
+            // start in flight: keep flashing white<->blue, never overwrite the icon
             if (!flashing)
             {
                 flashing = true;
                 if (flashTimer != null) flashTimer.Start();
             }
+            lastState = st;
             return;
         }
-        // not starting: stop the flash and settle on the real icon
+        // not starting: stop the flash and settle on a static icon
         bool wasFlashing = flashing;
         if (flashing)
         {
             flashing = false;
             if (flashTimer != null) flashTimer.Stop();
         }
-        bool up = dp.IsUp;
-        // skip when nothing changed (avoid churning the icon/text every poll tick), but always
-        // settle after a flash: the flash timer may have left the icon at either flash state
-        if (!wasFlashing && up == lastUpState && darkMode == lastDarkState)
-            return;
-        lastUpState = up;
+        if (!wasFlashing && st == lastState && darkMode == lastDarkState)
+            return; // nothing changed
+        lastState = st;
         lastDarkState = darkMode;
         Icon use = null;
-        if (up) use = blueIcon;
+        // Running -> blue; Stopped and Stopping -> white/dark stopped icon (Stopping gives
+        // immediate "stopped" feedback the moment the user clicks Stop)
+        if (st == DshState.Running) use = blueIcon;
         else use = darkMode ? whiteIcon : darkIcon;
         if (use != null) tray.Icon = use;
-        tray.Text = up ? Lang.T("tray.running") : Lang.T("tray.stopped");
+        tray.Text = (st == DshState.Running) ? Lang.T("tray.running") : Lang.T("tray.stopped");
     }
 
     // open the GitHub releases page for the "download update" menu item
