@@ -61,6 +61,10 @@ class SettingsForm : Form
         ShowInTaskbar = true;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(560, 426);
+        // size to the grid content (rows are fixed-height); the width stays at 560 via the
+        // percent column. Keep a sane floor for the FixedDialog on very small scales.
+        AutoSize = true;
+        AutoSizeMode = AutoSizeMode.GrowAndShrink;
         AutoScaleMode = AutoScaleMode.Dpi;
         try { ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         if (ownedIcon != null) Icon = ownedIcon;
@@ -78,99 +82,177 @@ class SettingsForm : Form
 
     void BuildControls()
     {
+        // ---- main vertical stack: label column + content column, one row per control row ----
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(14),
+            ColumnCount = 2,
+            RowCount = 0,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink
+        };
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104)); // label column
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // content column
+        this.root = root;
+
         // ---- section 1: general (bold heading + separator line) ----
-        lblSecGeneral = new Label { Left = 16, Top = 12, AutoSize = true };
+        lblSecGeneral = new Label { AutoSize = true };
         lblSecGeneral.Font = new Font(lblSecGeneral.Font, FontStyle.Bold);
-        lineGeneral = new Panel { Left = 16, Top = 34, Width = 528, Height = 1 };
-        lblLanguage = new Label { Left = 16, Top = 44, Width = 90, Height = 22 };
-        lblLanguage.AutoSize = false;
-        lblLanguage.TextAlign = ContentAlignment.MiddleLeft;
+        lineGeneral = new Panel { Height = 1, Dock = DockStyle.Fill };
+
+        lblLanguage = new Label { AutoSize = false, Width = 90, Height = 22, TextAlign = ContentAlignment.MiddleLeft };
         // each radio group gets its OWN Panel parent: WinForms RadioButtons group by parent
         // container, so language (3) and theme (3) radios must NOT share the Form directly or
         // they form ONE mutual-exclusion group (the bug). Radio positions are panel-relative.
-        langPanel = new Panel { Left = 120, Top = 44, Width = 400, Height = 26, BorderStyle = BorderStyle.None };
-        radioAuto = new RadioButton { Left = 0, Top = 0, AutoSize = true };
+        langPanel = new Panel { Dock = DockStyle.Fill, Height = 26, BorderStyle = BorderStyle.None };
+        radioAuto = new RadioButton { Left = 0, Top = 2, AutoSize = true };
         radioAuto.CheckedChanged += delegate { OnLangChanged(radioAuto); };
-        radioZh = new RadioButton { Left = 0, Top = 0, AutoSize = true };
+        radioZh = new RadioButton { Left = 0, Top = 2, AutoSize = true };
         radioZh.CheckedChanged += delegate { OnLangChanged(radioZh); };
-        radioEn = new RadioButton { Left = 0, Top = 0, AutoSize = true };
+        radioEn = new RadioButton { Left = 0, Top = 2, AutoSize = true };
         radioEn.CheckedChanged += delegate { OnLangChanged(radioEn); };
         langPanel.Controls.Add(radioAuto);
         langPanel.Controls.Add(radioZh);
         langPanel.Controls.Add(radioEn);
-        lblTheme = new Label { Left = 16, Top = 76, Width = 90, Height = 22 };
-        lblTheme.AutoSize = false;
-        lblTheme.TextAlign = ContentAlignment.MiddleLeft;
-        themePanel = new Panel { Left = 120, Top = 76, Width = 400, Height = 26, BorderStyle = BorderStyle.None };
-        radioThemeAuto = new RadioButton { Left = 0, Top = 0, AutoSize = true };
+
+        lblTheme = new Label { AutoSize = false, Width = 90, Height = 22, TextAlign = ContentAlignment.MiddleLeft };
+        themePanel = new Panel { Dock = DockStyle.Fill, Height = 26, BorderStyle = BorderStyle.None };
+        radioThemeAuto = new RadioButton { Left = 0, Top = 2, AutoSize = true };
         radioThemeAuto.CheckedChanged += delegate { OnThemeChanged(radioThemeAuto); };
-        radioThemeLight = new RadioButton { Left = 0, Top = 0, AutoSize = true };
+        radioThemeLight = new RadioButton { Left = 0, Top = 2, AutoSize = true };
         radioThemeLight.CheckedChanged += delegate { OnThemeChanged(radioThemeLight); };
-        radioThemeDark = new RadioButton { Left = 0, Top = 0, AutoSize = true };
+        radioThemeDark = new RadioButton { Left = 0, Top = 2, AutoSize = true };
         radioThemeDark.CheckedChanged += delegate { OnThemeChanged(radioThemeDark); };
         themePanel.Controls.Add(radioThemeAuto);
         themePanel.Controls.Add(radioThemeLight);
         themePanel.Controls.Add(radioThemeDark);
-        chkAutoRestart = new CheckBox { Left = 16, Top = 108, Width = 528, Height = 22 };
+
+        chkAutoRestart = new CheckBox { AutoSize = true };
         chkAutoRestart.Checked = dp.AutoRestartEnabled;
         chkAutoRestart.CheckedChanged += delegate { OnAutoRestartChanged(); };
-        chkAutostart = new CheckBox { Left = 16, Top = 140, Width = 528, Height = 22 };
+        chkAutostart = new CheckBox { AutoSize = true };
         chkAutostart.Checked = Config.IsAutostartEnabled();
         chkAutostart.CheckedChanged += delegate { OnAutostartChanged(); };
 
         // ---- section 2: about / updates ----
-        lblSecAbout = new Label { Left = 16, Top = 184, AutoSize = true };
+        lblSecAbout = new Label { AutoSize = true };
         lblSecAbout.Font = new Font(lblSecAbout.Font, FontStyle.Bold);
-        lineAbout = new Panel { Left = 16, Top = 206, Width = 528, Height = 1 };
-        lblVersion = new Label { Left = 16, Top = 216, Width = 528, Height = 20 };
-        lblVersion.AutoSize = false;
-        lblVersion.TextAlign = ContentAlignment.MiddleLeft;
-        lblCurrentUrl = new Label { Left = 16, Top = 238, Width = 528, Height = 22 };
-        lblCurrentUrl.AutoSize = false;
-        lblCurrentUrl.TextAlign = ContentAlignment.MiddleLeft;
-        lnkRepo = new LinkLabel { Left = 16, Top = 264, Width = 528, Height = 20 };
+        lineAbout = new Panel { Height = 1, Dock = DockStyle.Fill };
+        lblVersion = new Label { AutoSize = false, Width = 500, Height = 20, TextAlign = ContentAlignment.MiddleLeft };
+        lblCurrentUrl = new Label { AutoSize = false, Width = 500, Height = 22, TextAlign = ContentAlignment.MiddleLeft };
+        lnkRepo = new LinkLabel { AutoSize = false, Width = 500, Height = 20 };
         lnkRepo.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnCheck = new Button { Left = 16, Top = 296, Width = 150, Height = 28 };
+
+        // check-update row: check / result / download-link / auto-update all on ONE grid row so
+        // they never collide when "new version found" reveals the last two.
+        var updateRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 4,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink
+        };
+        updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190)); // btnCheck (wide enough for en "Check for updates")
+        updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));      // lblResult
+        updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));      // lnkDownload
+        updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));      // btnAutoUpdate
+        btnCheck = new Button { Dock = DockStyle.Fill };
         btnCheck.Click += delegate { OnCheckUpdate(); };
-        lblResult = new Label { Left = 178, Top = 300, Width = 180, Height = 22 };
-        lblResult.AutoSize = false;
-        lblResult.TextAlign = ContentAlignment.MiddleLeft;
-        lnkDownload = new LinkLabel { Left = 186, Top = 299, AutoSize = true, Visible = false };
+        lblResult = new Label { AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
+        lnkDownload = new LinkLabel { AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnAutoUpdate = new Button { Left = 400, Top = 296, Width = 132, Height = 28, Visible = false };
+        btnAutoUpdate = new Button { AutoSize = true, Height = 28, Visible = false };
         btnAutoUpdate.Click += delegate { OnAutoUpdate(); };
-        btnOpenConfig = new Button { Left = 16, Top = 328, Width = 256, Height = 28 };
+        updateRow.Controls.Add(btnCheck, 0, 0);
+        updateRow.Controls.Add(lblResult, 1, 0);
+        updateRow.Controls.Add(lnkDownload, 2, 0);
+        updateRow.Controls.Add(btnAutoUpdate, 3, 0);
+        updateRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        this.updateRow = updateRow;
+
+        // config / logs buttons on one row
+        var fileRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        fileRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        fileRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        btnOpenConfig = new Button { AutoSize = false, Dock = DockStyle.Fill, Height = 28 }; // Dock=Fill spans its cell width
         btnOpenConfig.Click += delegate { OpenConfig(); };
-        btnOpenLogs = new Button { Left = 288, Top = 328, Width = 256, Height = 28 };
+        btnOpenLogs = new Button { AutoSize = false, Dock = DockStyle.Fill, Height = 28 };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
+        fileRow.Controls.Add(btnOpenConfig, 0, 0);
+        fileRow.Controls.Add(btnOpenLogs, 1, 0);
+        fileRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        this.fileRow = fileRow;
 
-        // ---- close button (bottom-right) ----
-        btnClose = new Button { Left = 454, Top = 374, Width = 90, Height = 30 };
+        // bottom row: right-aligned close button
+        var closeRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
+        closeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        btnClose = new Button { AutoSize = false, Width = 90, Height = 30, Anchor = AnchorStyles.Right };
+        // anchor Right inside the cell keeps it flush right; add right margin via cell padding
+        btnClose.Margin = new Padding(0, 4, 0, 0);
         btnClose.Click += delegate { Close(); };
+        closeRow.Controls.Add(btnClose, 0, 0);
+        closeRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        this.closeRow = closeRow;
 
-        Controls.Add(lblSecGeneral);
-        Controls.Add(lineGeneral);
-        Controls.Add(lblLanguage);
-        Controls.Add(langPanel);
-        Controls.Add(lblTheme);
-        Controls.Add(themePanel);
-        Controls.Add(chkAutoRestart);
-        Controls.Add(chkAutostart);
-        Controls.Add(lblSecAbout);
-        Controls.Add(lineAbout);
-        Controls.Add(lblVersion);
-        Controls.Add(lblCurrentUrl);
-        Controls.Add(lnkRepo);
-        Controls.Add(btnCheck);
-        Controls.Add(lblResult);
-        Controls.Add(lnkDownload);
-        Controls.Add(btnAutoUpdate);
-        Controls.Add(btnOpenConfig);
-        Controls.Add(btnOpenLogs);
-        Controls.Add(btnClose);
+        // ---- assemble rows ----
+        AddSpan(root, lblSecGeneral, 0);
+        AddSeparatorRow(root, lineGeneral, 1);
+        AddRow(root, lblLanguage, langPanel, 2);
+        AddRow(root, lblTheme, themePanel, 3);
+        AddSpan(root, chkAutoRestart, 4);
+        AddSpan(root, chkAutostart, 5);
+        AddSpan(root, lblSecAbout, 6);
+        AddSeparatorRow(root, lineAbout, 7);
+        AddSpan(root, lblVersion, 8);
+        AddSpan(root, lblCurrentUrl, 9);
+        AddSpan(root, lnkRepo, 10);
+        AddSpan(root, updateRow, 11);
+        AddSpan(root, fileRow, 12);
+        AddSpan(root, closeRow, 13);
+
+        // explicit fixed row heights: content rows get their intended control height (auto-sizing
+        // them is fragile here — both the fixed-size labels and the Dock=Fill panels report no
+        // preferred size, which would collapse the whole row). Dock=Fill on children then fills each
+        // row predictably.
+        int[] rowH = { 24, 14, 26, 26, 26, 26, 24, 14, 24, 26, 24, 36, 34, 38 };
+        for (int i = 0; i < root.RowCount; i++)
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, rowH[i]));
+
+        Controls.Add(root);
 
         AcceptButton = btnClose;
         CancelButton = btnClose;
+    }
+
+    TableLayoutPanel root;
+    TableLayoutPanel updateRow;
+    TableLayoutPanel fileRow;
+    TableLayoutPanel closeRow;
+
+    // add a 2-column-wide (label+content) row
+    static void AddRow(TableLayoutPanel grid, Control label, Control content, int row)
+    {
+        label.Margin = new Padding(0, 4, 6, 4);
+        grid.Controls.Add(label, 0, row);
+        grid.Controls.Add(content, 1, row);
+    }
+
+    // add a row that spans BOTH columns
+    static void AddSpan(TableLayoutPanel grid, Control c, int row, int colSpan = 2, int rowSpan = 1)
+    {
+        c.Margin = new Padding(0, 4, 0, 4);
+        grid.Controls.Add(c, 0, row);
+        grid.SetColumnSpan(c, colSpan);
+        grid.SetRowSpan(c, rowSpan);
+    }
+
+    // separator row: 1px line set to fill its cell
+    static void AddSeparatorRow(TableLayoutPanel grid, Control sep, int row)
+    {
+        sep.Margin = new Padding(0, 6, 0, 6);
+        grid.Controls.Add(sep, 0, row);
+        grid.SetColumnSpan(sep, 2);
     }
 
     // full light/dark adaptation across form + separators + every control
@@ -193,8 +275,12 @@ class SettingsForm : Form
         lineGeneral.BackColor = line;
         lineAbout.BackColor = line;
 
-        // panels host the radio groups; paint them to match the form so no default light panel
-        // shows through in dark mode
+        // paint every container to the form background so no default light panel shows through
+        // in dark mode (root grid + radio-group panels + nested update/file/close rows)
+        if (root != null) { root.BackColor = back; root.ForeColor = fore; }
+        if (updateRow != null) { updateRow.BackColor = back; updateRow.ForeColor = fore; }
+        if (fileRow != null) { fileRow.BackColor = back; fileRow.ForeColor = fore; }
+        if (closeRow != null) { closeRow.BackColor = back; closeRow.ForeColor = fore; }
         langPanel.BackColor = back;
         langPanel.ForeColor = fore;
         themePanel.BackColor = back;
@@ -432,9 +518,8 @@ class SettingsForm : Form
                     if (newer)
                     {
                         lblResult.Text = string.Format(Lang.T("settings.updateAvailable"), UpdateCheck.LatestVersion);
-                        // re-position the download link right after the result text (which may
-                        // have grown) so they never overlap or clip the link's text
-                        lnkDownload.Left = lblResult.Right + 8;
+                        // lnkDownload lives in its own grid column, so the table provides the
+                        // spacing (previous absolute Left repositioning is superseded by the grid)
                         lnkDownload.Visible = true;
                         btnAutoUpdate.Visible = true;
                     }

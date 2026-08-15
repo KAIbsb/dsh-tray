@@ -78,6 +78,9 @@ static class Program
 
         // only the single primary instance reaches here
         Logging.InitLog();
+        // a previous auto-update / dev deploy leaves dsh-tray.old.tmp.exe behind (it was locked by
+        // the old process, which has since exited); delete it so the user never has to by hand.
+        CleanupStaleFiles();
         Config.InitConfig();
         var dp = new DshProcess(Config.Current);
         dp.SelfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
@@ -102,6 +105,18 @@ static class Program
         TrayMenu.Dispose();
         dp.Dispose();
         if (mutex != null) mutex.ReleaseMutex();
+    }
+
+    // Delete stale auto-update / dev-deploy leftovers next to the exe (e.g. dsh-tray.old.tmp.exe).
+    // Called once at primary-instance startup, at which point the process that owned the file has
+    // exited, so it is normally unlocked. Failures are logged and ignored (never fatal).
+    static void CleanupStaleFiles()
+    {
+        string dir = Path.GetDirectoryName(Application.ExecutablePath);
+        if (string.IsNullOrEmpty(dir)) return;
+        string stale = Path.Combine(dir, "dsh-tray.old.tmp.exe");
+        try { if (File.Exists(stale)) { File.Delete(stale); Logging.Log("cleanup: removed stale " + stale); } }
+        catch (Exception ex) { Logging.Log("cleanup stale exe failed (ignored): " + ex.Message); }
     }
 
     // ---- headless self-check, writes result next to exe ----
