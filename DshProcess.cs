@@ -129,7 +129,7 @@ class DshProcess
         // adopt an already-running harness (e.g. left up by a previous tray session): never
         // spawn a second instance — it dies on the port conflict and the Exited handler would
         // wrongly collapse the state to Stopped
-        if (IsPortServed())
+        if (PortServedByDsh())
         {
             Logging.Log("StartCore: existing harness on port " + cfg.Port + ", adopting");
             return StartResult.AlreadyUp;
@@ -153,20 +153,22 @@ class DshProcess
             Process proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
             proc.Exited += dshProcExited;
             proc.Start();
-            dshProc = proc;
-            Logging.Log("StartDsh: launched pid=" + dshProc.Id + " (log=" + dshLog + ")");
+            lock (stateLock) { dshProc = proc; }
+            Logging.Log("StartDsh: launched pid=" + proc.Id + " (log=" + dshLog + ")");
             return StartResult.Launched;
         }
         catch (Exception ex) { Logging.Log("StartDsh failed: " + ex.Message); return StartResult.Failed; }
     }
 
-    // true when the port is already served by a node process (adopt case); identity check so a
-    // non-node occupant never blocks a start
-    bool IsPortServed()
+    // true when the port is already served by a dsh harness (adopt case). Identity check is
+    // node + a dsh-looking command line so a non-node occupant, or an unrelated node process,
+    // never blocks a start or gets adopted. WMI runs 100-300ms, but these call sites are all
+    // low-frequency (one per start/stop/crash), so the cost is acceptable.
+    bool PortServedByDsh()
     {
         if (!PortOpen(cfg.Port)) return false;
         int pid = FindPidOnPort(cfg.Port);
-        return pid > 0 && IsNodeProcess(pid);
+        return pid > 0 && IsNodeProcess(pid) && CommandLineLooksLikeDsh(pid);
     }
 
     // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
@@ -183,7 +185,7 @@ class DshProcess
                 // probe outside the lock (TCP + maybe netstat): only collapse to Stopped when
                 // the port is really down — our process may have died on a port conflict while
                 // another node instance still serves the harness
-                bool served = IsPortServed();
+                bool served = PortServedByDsh();
                 lock (stateLock)
                 {
                     if (p != null && ReferenceEquals(p, dshProc) &&
@@ -207,38 +209,38 @@ class DshProcess
     {
         bool owned = false;
         int ownedPid = 0;
+        Process p = null;
         lock (stateLock)
         {
             if (dshProc != null)
             {
-                try { owned = !dshProc.HasExited; ownedPid = dshProc.Id; } catch { owned = false; }
+                try { owned = !dshProc.HasExited; ownedPid = dshProc.Id; p = dshProc; } catch { owned = false; }
             }
+            // detach + dispose + null are all fast; do them under the lock (no WaitForExit/KillTree here)
+            DisposeDshProcLocked();
         }
         if (owned)
         {
             Logging.Log("StopDsh: killing owned pid=" + ownedPid);
-            Process p = dshProc;
-            KillTree(ownedPid);
-            try { if (p != null) p.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
+            KillTree(ownedPid); // slow; outside the lock
+            try { p.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
         }
-        DisposeDshProc();
-        dshProc = null;
 
         if (PortOpen(cfg.Port))
         {
             int pid = FindPidOnPort(cfg.Port);
             if (pid > 0)
             {
-                // only kill the port owner if it is actually node.exe; refusing to kill an
-                // unrelated process that happens to hold our port avoids an identity mix-up
-                if (IsNodeProcess(pid))
+                // only kill the port owner if it is a node process whose command line looks like
+                // dsh; an unrelated node that happens to hold our port is never killed
+                if (IsNodeProcess(pid) && CommandLineLooksLikeDsh(pid))
                 {
                     Logging.Log("StopDsh: killing external pid=" + pid);
                     KillTree(pid);
                 }
                 else
                 {
-                    Logging.Log("StopDsh: pid=" + pid + " on port " + cfg.Port + " is not node, refusing to kill");
+                    Logging.Log("StopDsh: pid=" + pid + " on port " + cfg.Port + " is not a dsh node process, refusing to kill");
                 }
             }
         }
@@ -305,13 +307,14 @@ class DshProcess
         bool freed = await Task.Run(() => StopCore());
         // a refused stop (e.g. elevated kill declined) can leave a node still serving the port:
         // adopt it instead of lying with a Stopped state over a live harness
-        bool served = IsPortServed();
+        bool served = PortServedByDsh();
         lock (stateLock)
         {
             if (!freed && served)
             {
-                Logging.Log("StopAsync: port still served after stop, adopting running harness");
+                Logging.Log("StopAsync: stop failed, adopting running harness (userStopped reset)");
                 state = DshState.Running;
+                userStopped = false;
             }
             else
             {
@@ -339,7 +342,7 @@ class DshProcess
         // cur == Running
         Logging.Log("=== RestartDsh ===");
         bool freed = await Task.Run(() => StopCore());
-        bool served = IsPortServed();
+        bool served = PortServedByDsh();
         lock (stateLock)
         {
             if (!freed && served)
@@ -382,20 +385,21 @@ class DshProcess
         if (waited >= PortFreeWaitMs && PortOpen(cfg.Port)) Logging.Log("WaitForPortFree: timed out, port still open");
     }
 
-    // detach the Exited handler then dispose the process object; safe to call when null
-    void DisposeDshProc()
+    // detach the Exited handler, dispose and null the process object. MUST be called under
+    // stateLock (all dshProc reads/writes are in the lock); the operations are all fast.
+    void DisposeDshProcLocked()
     {
         if (dshProc != null)
         {
             try { dshProc.Exited -= dshProcExited; } catch { }
             try { dshProc.Dispose(); } catch { }
+            dshProc = null;
         }
     }
 
     public void Dispose()
     {
-        DisposeDshProc();
-        dshProc = null;
+        lock (stateLock) { DisposeDshProcLocked(); }
     }
 
     // kill a pid + its tree; elevate if the target runs at higher integrity
@@ -425,12 +429,12 @@ class DshProcess
 
     void RunElevatedKill(int pid)
     {
-        string tokenPath = ElevateTokenPath(pid);
+        // one-time nonce: the elevated helper verifies it plus the dsh entry before killing,
+        // so a stray/non-originated --elevated-kill invocation is rejected (fail-closed)
+        string nonce = Guid.NewGuid().ToString("N");
+        string tokenPath = ElevateTokenPath(nonce);
         try
         {
-            // one-time nonce: the elevated helper verifies it plus the dsh entry before killing,
-            // so a stray/non-originated --elevated-kill invocation is rejected (fail-closed)
-            string nonce = Guid.NewGuid().ToString("N");
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(tokenPath));
@@ -467,10 +471,10 @@ class DshProcess
         }
     }
 
-    static string ElevateTokenPath(int pid)
+    static string ElevateTokenPath(string nonce)
     {
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "dsh-tray");
-        return Path.Combine(dir, "elevate-" + pid + ".tmp");
+        return Path.Combine(dir, "elevate-" + nonce + ".tmp");
     }
 
     // ---- runs as elevated helper: verify origin + target identity, then kill one pid + tree ----
@@ -480,7 +484,7 @@ class DshProcess
         if (string.IsNullOrEmpty(nonce)) { Reject(pid, "missing nonce"); return false; }
 
         // 1. token file must exist with a matching nonce and the same dsh entry
-        string tokenPath = ElevateTokenPath(pid);
+        string tokenPath = ElevateTokenPath(nonce);
         string tokenNonce, tokenEntry;
         if (!ReadToken(tokenPath, out tokenNonce, out tokenEntry)) { Reject(pid, "token file missing/unreadable"); CleanupToken(tokenPath); return false; }
         if (tokenNonce != nonce) { Reject(pid, "nonce mismatch"); CleanupToken(tokenPath); return false; }
@@ -552,7 +556,7 @@ class DshProcess
                     string cmd = cl.ToString();
                     if (cmd.IndexOf("@deepseek-ai", StringComparison.OrdinalIgnoreCase) >= 0) return true;
                     if (cmd.IndexOf("bin.js", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                    if (cmd.IndexOf("\\dsh", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    if (cmd.IndexOf("\\dsh\\", StringComparison.OrdinalIgnoreCase) >= 0) return true;
                 }
             }
             return false;

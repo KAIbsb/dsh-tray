@@ -91,7 +91,7 @@ harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标�
 
 ```ini
 # dshtray.ini
-url = http://127.0.0.1:3080   # 必写;端口由 url 推导,改端口直接改这里
+url = http://127.0.0.1:3080   # 默认值;端口由 url 推导,改端口直接改这里
 lang =                        # 界面语言 zh/en,留空 = 跟随系统
 autorestart = true            # 崩溃自动重启 true/false
 autostart = false             # 开机自启 true/false(同时写入 Windows 启动项)

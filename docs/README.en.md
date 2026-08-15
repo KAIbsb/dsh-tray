@@ -90,7 +90,7 @@ Exit            ← exits the tray only; the harness keeps running (use Stop to 
 
 ```ini
 # dshtray.ini
-url = http://127.0.0.1:3080   # required; port derived from the URL (change it for a custom port)
+url = http://127.0.0.1:3080   # default; port derived from the URL (change it for a custom port)
 lang =                        # UI language zh/en; empty = follow system
 autorestart = true            # auto-restart on crash: true/false
 autostart = false             # start with Windows: true/false (also written to the startup key)

@@ -5,8 +5,8 @@
 ; Empty = auto-detect / default; a value = use it.
 ; ==========================================================
 
-; Harness 网页地址(必写;端口由 url 推导,默认 3080)
-; Harness web URL (required; the port is derived from it, default 3080)
+; Harness 网页地址(默认 http://127.0.0.1:3080,改端口直接改这里;端口由 url 推导)
+; Harness web URL (default http://127.0.0.1:3080; change it here for a custom port, the port is derived from it)
 url=http://127.0.0.1:3080
 
 ; 界面语言:zh / en(留空 = 跟随系统)

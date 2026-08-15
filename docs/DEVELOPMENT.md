@@ -16,7 +16,7 @@ Config.cs         配置单一来源 dshtray.ini:解析、自动探测、注册�
 IniFile.cs        ini 读写小工具(注释行保留,键值就地更新)
 DshProcess.cs     harness 进程状态机:启动/停止/重启/自愈轮询/判活/提权杀
 WindowMgr.cs      浏览器 APP 窗口:打开、刷新(Ctrl+R)、枚举
-TrayMenu.cs       托盘图标、原生菜单、主题、轮询、启动闪白
+TrayMenu.cs       托盘图标、原生菜单、主题、轮询
 SettingsForm.cs   设置窗口(语言热切换/开关/检查更新/关于)
 UpdateCheck.cs    GitHub Releases 版本检查(后台静默,8s 超时,TLS 1.2)
 Win32.cs          P/Invoke 声明与暗色主题封装
@@ -61,7 +61,7 @@ cmd /c .devtools\build-dev.bat
 ## 内部机制(修改前必读)
 
 - **harness 启动方式**:通过 `cmd /c node <dsh入口> web >> harness.log 2>&1` 启动,输出重定向到**文件**而非管道。原因:托盘退出时若管道断裂,node 会在 ~1 秒内因 EPIPE 崩溃(已实测),文件重定向让 harness 完全独立于托盘生命周期
-- **异步生命周期**:启动 / 停止 / 重启走 `Task` 异步执行,不阻塞 UI 线程(菜单、左键、轮询始终可响应);启动进行中托盘图标白↔蓝 500ms 闪动,结束后按真实状态定格;自愈轮询在异步启动进行中不会重复拉起(防双实例)
+- **异步生命周期**:启动 / 停止 / 重启走 `Task` 异步执行,不阻塞 UI 线程(菜单、左键、轮询始终可响应);图标二态:蓝=运行,白/暗=停止(无闪动),状态变化经变化检测后更新;自愈轮询在异步启动进行中不会重复拉起(防双实例)
 - **判活**:TCP 探测 `127.0.0.1:Port`(默认 3080),且端口占用者必须是 node 进程才判定为运行中(防误判他人进程);PID 解析用 `netstat -ano`(只认 LISTENING 行、本地回环/any 地址)
 - **停止 / 重启**:`taskkill /T /F` 杀进程树;若目标进程完整性级别高于自身(如管理员启动的 harness),以管理员身份重跑自身(`--elevated-kill <pid>`)执行杀进程(UAC 为「从不通知」时静默完成)
 - **原生菜单**:`CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`。深色模式靠 `uxtheme.dll` 的 `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)` 跟随系统;弹菜单前 owner 窗口必须置前台(`SetForegroundWindow` + ALT 键技巧),否则菜单无法通过点击外部 / Esc 关闭

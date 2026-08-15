@@ -16,7 +16,7 @@ Config.cs         single config source dshtray.ini: parsing, auto-detection, reg
 IniFile.cs        minimal ini reader/writer (comments preserved, keys updated in place)
 DshProcess.cs     harness process state machine: start/stop/restart/self-heal poll/liveness/elevated kill
 WindowMgr.cs      browser app window: open, reload (Ctrl+R), enumerate
-TrayMenu.cs       tray icon, native menu, theme, poll, starting-flash
+TrayMenu.cs       tray icon, native menu, theme, poll
 SettingsForm.cs   settings window (language hot-switch / toggles / update check / about)
 UpdateCheck.cs    GitHub Releases check (background silent, 8s timeout, TLS 1.2)
 Win32.cs          P/Invoke declarations and dark-theme helpers
@@ -61,7 +61,7 @@ cmd /c .devtools\build-dev.bat
 ## Internals (read before modifying)
 
 - **How the harness is launched**: via `cmd /c node <dsh entry> web >> harness.log 2>&1`, with output redirected to a **file** instead of a pipe. Reason: if the tray exits and the pipe breaks, node crashes from EPIPE within ~1 second (verified empirically); file redirection makes the harness fully independent of the tray's lifetime
-- **Async lifecycle**: start / stop / restart run on `Task`s and never block the UI thread (menu, left-click and the poll stay responsive); while starting, the tray icon flashes white↔blue every 500 ms and settles on the real status when done; the self-heal poll won't double-start while an async start/restart is in flight
+- **Async lifecycle**: start / stop / restart run on `Task`s and never block the UI thread (menu, left-click and the poll stay responsive); the icon is two-state — blue=running, white/dark=stopped (no flashing) — and updates only when the state changes; the self-heal poll won't double-start while an async start/restart is in flight
 - **Liveness check**: TCP probe to `127.0.0.1:Port` (default 3080), and the port owner must be a node process for the harness to count as up (avoids mistaking other processes); PIDs are resolved by parsing `netstat -ano` (LISTENING rows with loopback/any local addresses only)
 - **Stop / restart**: `taskkill /T /F` kills the process tree; if the target runs at a higher integrity level (e.g. an admin-started harness), the tray re-launches itself elevated (`--elevated-kill <pid>`) to kill it (silent when UAC is "never notify")
 - **Native menu**: `CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`. Dark mode follows the system via `uxtheme.dll` `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)`; the owner window must be brought to the foreground before showing the menu (`SetForegroundWindow` + ALT-key trick), otherwise the menu won't dismiss on outside clicks / Esc

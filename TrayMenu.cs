@@ -113,12 +113,14 @@ static class TrayMenu
     {
         try
         {
-            if (dp.State == DshState.Stopped)
+            DshState st = dp.State;
+            if (st == DshState.Starting || st == DshState.Stopping)
+                return; // transition in flight: don't open a window against a half-started state
+            if (st == DshState.Stopped)
             {
                 await dp.StartAsync();
                 UpdateStatus();
             }
-            // Starting/Running/Stopping: just open (start in flight or already up)
             WindowMgr.OpenWindow();
         }
         catch (Exception ex) { Logging.Log("StartAndOpen failed: " + ex.Message); }
