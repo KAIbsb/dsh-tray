@@ -1,8 +1,8 @@
 # 构建产物
 *.exe
 
-# 本地工具与图标生成链(不入库)
-tools/
+# 个人开发工具与本地记录(不入库)
+.devtools/
 
 # 测试产物
 smoke-result.txt
