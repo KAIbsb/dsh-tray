@@ -304,14 +304,16 @@ static class TrayMenu
             return;
         }
         // not starting: stop the flash and settle on the real icon
+        bool wasFlashing = flashing;
         if (flashing)
         {
             flashing = false;
             if (flashTimer != null) flashTimer.Stop();
         }
         bool up = dp.IsUp;
-        // skip when nothing changed (avoid churning the icon/text every poll tick)
-        if (up == lastUpState && darkMode == lastDarkState)
+        // skip when nothing changed (avoid churning the icon/text every poll tick), but always
+        // settle after a flash: the flash timer may have left the icon at either flash state
+        if (!wasFlashing && up == lastUpState && darkMode == lastDarkState)
             return;
         lastUpState = up;
         lastDarkState = darkMode;

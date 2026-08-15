@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Text;
 using Microsoft.Win32;
 using System.Windows.Forms;
@@ -278,7 +279,18 @@ static class Config
         {
             string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
             var lines = new List<string>();
-            if (File.Exists(ini)) lines.AddRange(File.ReadAllLines(ini));
+            if (File.Exists(ini))
+            {
+                lines.AddRange(File.ReadAllLines(ini));
+            }
+            else
+            {
+                // no ini yet: seed it from the embedded commented template first, so a bare
+                // lang-only file is never produced and the template is always visible
+                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("dshtray.ini.example"))
+                    if (s != null) using (var r = new StreamReader(s))
+                        lines.AddRange(r.ReadToEnd().Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
+            }
             bool replaced = false;
             for (int i = 0; i < lines.Count; i++)
             {

@@ -30,6 +30,9 @@ static class UpdateCheck
     {
         try
         {
+            // .NET Framework defaults to TLS 1.0/1.1 via Schannel on some systems; GitHub
+            // requires TLS 1.2+, so enable it explicitly (idempotent, process-wide)
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
             var req = (HttpWebRequest)WebRequest.Create(ReleasesApiUrl);
             req.UserAgent = "dsh-tray/" + appVersion;
             req.Timeout = 8000;
