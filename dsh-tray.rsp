@@ -8,6 +8,7 @@
 /resource:assets\whale-dark.png,whale-dark.png
 /resource:dshtray.ini.example,dshtray.ini.example
 /r:System.Drawing.dll
+/r:System.Management.dll
 /r:System.Windows.Forms.dll
 /out:dsh-tray.exe
 Program.cs

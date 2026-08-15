@@ -35,15 +35,23 @@ static class Program
         // the mutex), so gating it would make it exit and the elevated kill would never run.
         if (args.Length > 1)
         {
-            // elevated kill helper: only needs logging + our own integrity level. A bare
-            // DshProcess is enough here (RunElevatedKillDirect uses no config).
+            // elevated kill helper: a separate elevated process spawned via runas. It verifies
+            // a one-time nonce + target identity before killing (fail-closed). Loads config so
+            // it can compare the dsh entry against the token + target command line.
             if (args[1] == "--elevated-kill" && args.Length > 2)
             {
                 Logging.InitLog();
+                Config.InitConfig();
                 var killDp = new DshProcess(Config.Current);
                 killDp.SelfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
                 int pid;
-                if (int.TryParse(args[2], out pid)) killDp.RunElevatedKillDirect(pid);
+                if (int.TryParse(args[2], out pid))
+                {
+                    string nonce = args.Length > 3 ? args[3] : null;
+                    bool ok = killDp.RunElevatedKillDirect(pid, nonce);
+                    Environment.ExitCode = ok ? 0 : 1;
+                }
+                else Environment.ExitCode = 1;
                 return;
             }
 

@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Management;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -319,33 +321,134 @@ class DshProcess
 
     void RunElevatedKill(int pid)
     {
+        string tokenPath = ElevateTokenPath(pid);
         try
         {
+            // one-time nonce: the elevated helper verifies it plus the dsh entry before killing,
+            // so a stray/non-originated --elevated-kill invocation is rejected (fail-closed)
+            string nonce = Guid.NewGuid().ToString("N");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(tokenPath));
+                File.WriteAllText(tokenPath, nonce + Environment.NewLine + (cfg.DshEntry ?? ""), Encoding.UTF8);
+            }
+            catch (Exception ex) { Logging.Log("elevate token write failed: " + ex.Message); }
+
             var psi = new ProcessStartInfo
             {
                 FileName = Application.ExecutablePath,
-                Arguments = "--elevated-kill " + pid,
+                Arguments = "--elevated-kill " + pid + " " + nonce,
                 UseShellExecute = true,
                 Verb = "runas"
             };
-            var p = Process.Start(psi);
-            if (p != null) { p.WaitForExit(ElevatedKillWaitMs); Logging.Log("elevated kill helper: exit=" + p.ExitCode); }
+            Process p = null;
+            try { p = Process.Start(psi); }
+            catch (Exception ex) { Logging.Log("elevated kill launch failed (UAC declined?): " + ex.Message); }
+            if (p != null)
+            {
+                p.WaitForExit(ElevatedKillWaitMs);
+                Logging.Log("elevated kill helper: exit=" + p.ExitCode);
+            }
             else Logging.Log("elevated kill helper: Process.Start returned null");
         }
         catch (Exception ex)
         {
-            Logging.Log("elevated kill launch failed (UAC declined?): " + ex.Message);
+            Logging.Log("elevated kill failed: " + ex.Message);
+        }
+        finally
+        {
+            // idempotent cleanup: the helper deletes it after validation; this covers the
+            // declined / never-started / aborted paths so the token never lingers
+            try { File.Delete(tokenPath); } catch { }
         }
     }
 
-    // ---- runs as elevated helper: kill one pid + its tree ----
-    public void RunElevatedKillDirect(int pid)
+    static string ElevateTokenPath(int pid)
     {
+        string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "dsh-tray");
+        return Path.Combine(dir, "elevate-" + pid + ".tmp");
+    }
+
+    // ---- runs as elevated helper: verify origin + target identity, then kill one pid + tree ----
+    // Fail-closed: any check that fails logs the reason, cleans up and returns false (no kill).
+    public bool RunElevatedKillDirect(int pid, string nonce)
+    {
+        if (string.IsNullOrEmpty(nonce)) { Reject(pid, "missing nonce"); return false; }
+
+        // 1. token file must exist with a matching nonce and the same dsh entry
+        string tokenPath = ElevateTokenPath(pid);
+        string tokenNonce, tokenEntry;
+        if (!ReadToken(tokenPath, out tokenNonce, out tokenEntry)) { Reject(pid, "token file missing/unreadable"); CleanupToken(tokenPath); return false; }
+        if (tokenNonce != nonce) { Reject(pid, "nonce mismatch"); CleanupToken(tokenPath); return false; }
+        if (tokenEntry != (cfg.DshEntry ?? "")) { Reject(pid, "dsh entry mismatch"); CleanupToken(tokenPath); return false; }
+
+        // 2. validation passed -> delete the token (this pid's file only)
+        CleanupToken(tokenPath);
+
+        // 3. target must be a node process (our harness)
+        if (!IsNodeProcess(pid)) { Reject(pid, "target is not node.exe"); return false; }
+
+        // 4. target integrity must be <= self (helper runs elevated; refuse anything higher,
+        //    e.g. System); Unknown is treated as suspicious -> refuse
+        Win32.IntegrityLevel targetIntegrity = Win32.GetIntegrity(pid);
+        if (targetIntegrity == Win32.IntegrityLevel.Unknown) { Reject(pid, "target integrity unknown"); return false; }
+        if (targetIntegrity > selfIntegrity) { Reject(pid, "target integrity higher than self"); return false; }
+
+        // 5. target command line must contain our dsh entry (WMI); empty/error -> refuse
+        if (!CommandLineContainsDshEntry(pid)) { Reject(pid, "command line does not contain dsh entry"); return false; }
+
         Logging.Log("=== elevated kill start: pid=" + pid + " myIntegrity=" + selfIntegrity + " ===");
         Taskkill(pid);
         TryProcessKill(pid);
         Thread.Sleep(KillSleepMs);
         Logging.Log("elevated kill: pid=" + pid + " alive=" + IsAlive(pid));
+        return true;
+    }
+
+    static bool ReadToken(string path, out string nonce, out string entry)
+    {
+        nonce = null; entry = null;
+        try
+        {
+            if (!File.Exists(path)) return false;
+            string[] lines = File.ReadAllLines(path, Encoding.UTF8);
+            if (lines.Length < 2) return false;
+            nonce = lines[0].Trim();
+            entry = lines[1].Trim();
+            return true;
+        }
+        catch (Exception ex) { Logging.Log("elevate token read failed: " + ex.Message); return false; }
+    }
+
+    static void CleanupToken(string path)
+    {
+        try { File.Delete(path); } catch { }
+    }
+
+    static void Reject(int pid, string reason)
+    {
+        Logging.Log("elevated kill refused (pid=" + pid + "): " + reason);
+    }
+
+    bool CommandLineContainsDshEntry(int pid)
+    {
+        try
+        {
+            string dshEntry = cfg.DshEntry;
+            if (string.IsNullOrEmpty(dshEntry)) return false;
+            using (var searcher = new ManagementObjectSearcher(
+                "SELECT CommandLine FROM Win32_Process WHERE ProcessId=" + pid))
+            {
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    object cl = obj["CommandLine"];
+                    if (cl != null && cl.ToString().IndexOf(dshEntry, StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+            return false;
+        }
+        catch (Exception ex) { Logging.Log("elevated kill WMI query failed: " + ex.Message); return false; }
     }
 
     string Taskkill(int pid)
