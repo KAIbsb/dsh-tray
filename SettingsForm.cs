@@ -13,8 +13,14 @@ class SettingsForm : Form
     readonly DshProcess dp;
     readonly string appVersion;
 
-    ComboBox cmbLang;
+    Label lblSecGeneral;
+    Panel lineGeneral;
+    Label lblSecAbout;
+    Panel lineAbout;
     Label lblLanguage;
+    RadioButton radioAuto;
+    RadioButton radioZh;
+    RadioButton radioEn;
     CheckBox chkAutoRestart;
     CheckBox chkAutostart;
     Button btnCheck;
@@ -29,11 +35,13 @@ class SettingsForm : Form
     // current persisted language: "" = follow system, "zh", "en"
     string langCode;
     bool applyingLang;
+    readonly bool? themeOverride;
 
-    public SettingsForm(DshProcess process, string version)
+    public SettingsForm(DshProcess process, string version, bool? themeOverride = null)
     {
         dp = process;
         appVersion = version;
+        this.themeOverride = themeOverride;
         langCode = Config.Current.IniLang ?? "";
 
         Text = "dsh-tray";
@@ -42,8 +50,9 @@ class SettingsForm : Form
         MaximizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(420, 360);
+        ClientSize = new Size(480, 366);
         AutoScaleMode = AutoScaleMode.Dpi;
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildControls();
         ApplyTheme();
@@ -52,53 +61,66 @@ class SettingsForm : Form
 
     void BuildControls()
     {
-        lblLanguage = new Label { Left = 20, Top = 24, Width = 110 };
+        // ---- section 1: general (bold heading + separator line) ----
+        lblSecGeneral = new Label { Left = 16, Top = 12, AutoSize = true };
+        lblSecGeneral.Font = new Font(lblSecGeneral.Font, FontStyle.Bold);
+        lineGeneral = new Panel { Left = 16, Top = 34, Width = 448, Height = 1 };
+        lblLanguage = new Label { Left = 16, Top = 44, Width = 90, Height = 22 };
         lblLanguage.AutoSize = false;
-
-        cmbLang = new ComboBox { Left = 150, Top = 20, Width = 250, DropDownStyle = ComboBoxStyle.DropDownList };
-        cmbLang.SelectedIndexChanged += delegate { OnLangChanged(); };
-
-        chkAutoRestart = new CheckBox { Left = 20, Top = 64, Width = 380 };
+        lblLanguage.TextAlign = ContentAlignment.MiddleLeft;
+        radioAuto = new RadioButton { Left = 120, Top = 44, AutoSize = true };
+        radioAuto.CheckedChanged += delegate { OnLangChanged(radioAuto); };
+        radioZh = new RadioButton { Left = 220, Top = 44, AutoSize = true };
+        radioZh.CheckedChanged += delegate { OnLangChanged(radioZh); };
+        radioEn = new RadioButton { Left = 292, Top = 44, AutoSize = true };
+        radioEn.CheckedChanged += delegate { OnLangChanged(radioEn); };
+        chkAutoRestart = new CheckBox { Left = 16, Top = 76, Width = 400, Height = 22 };
         chkAutoRestart.Checked = dp.AutoRestartEnabled;
         chkAutoRestart.CheckedChanged += delegate { OnAutoRestartChanged(); };
-
-        chkAutostart = new CheckBox { Left = 20, Top = 92, Width = 380 };
+        chkAutostart = new CheckBox { Left = 16, Top = 108, Width = 400, Height = 22 };
         chkAutostart.Checked = Config.IsAutostartEnabled();
         chkAutostart.CheckedChanged += delegate { OnAutostartChanged(); };
 
-        btnCheck = new Button { Left = 20, Top = 128, Width = 120 };
-        btnCheck.Click += delegate { OnCheckUpdate(); };
-
-        lblResult = new Label { Left = 150, Top = 132, Width = 250 };
-        lblResult.AutoSize = false;
-
-        lnkDownload = new LinkLabel { Left = 20, Top = 160, Width = 380, Visible = false };
-        lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-
-        lblVersion = new Label { Left = 20, Top = 192, Width = 380 };
+        // ---- section 2: about / updates ----
+        lblSecAbout = new Label { Left = 16, Top = 152, AutoSize = true };
+        lblSecAbout.Font = new Font(lblSecAbout.Font, FontStyle.Bold);
+        lineAbout = new Panel { Left = 16, Top = 174, Width = 448, Height = 1 };
+        lblVersion = new Label { Left = 16, Top = 184, Width = 416, Height = 20 };
         lblVersion.AutoSize = false;
-
-        lnkRepo = new LinkLabel { Left = 20, Top = 220, Width = 380 };
+        lblVersion.TextAlign = ContentAlignment.MiddleLeft;
+        lnkRepo = new LinkLabel { Left = 16, Top = 212, Width = 416, Height = 20 };
         lnkRepo.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-
-        btnOpenConfig = new Button { Left = 20, Top = 260, Width = 180 };
+        btnCheck = new Button { Left = 16, Top = 240, Width = 110, Height = 28 };
+        btnCheck.Click += delegate { OnCheckUpdate(); };
+        lblResult = new Label { Left = 138, Top = 244, Width = 200, Height = 22 };
+        lblResult.AutoSize = false;
+        lblResult.TextAlign = ContentAlignment.MiddleLeft;
+        lnkDownload = new LinkLabel { Left = 342, Top = 243, AutoSize = true, Visible = false };
+        lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
+        btnOpenConfig = new Button { Left = 16, Top = 272, Width = 200, Height = 28 };
         btnOpenConfig.Click += delegate { OpenConfig(); };
-
-        btnOpenLogs = new Button { Left = 210, Top = 260, Width = 190 };
+        btnOpenLogs = new Button { Left = 232, Top = 272, Width = 200, Height = 28 };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
 
-        btnClose = new Button { Left = 320, Top = 320, Width = 80 };
+        // ---- close button (bottom-right) ----
+        btnClose = new Button { Left = 374, Top = 318, Width = 90, Height = 30 };
         btnClose.Click += delegate { Close(); };
 
+        Controls.Add(lblSecGeneral);
+        Controls.Add(lineGeneral);
         Controls.Add(lblLanguage);
-        Controls.Add(cmbLang);
+        Controls.Add(radioAuto);
+        Controls.Add(radioZh);
+        Controls.Add(radioEn);
         Controls.Add(chkAutoRestart);
         Controls.Add(chkAutostart);
+        Controls.Add(lblSecAbout);
+        Controls.Add(lineAbout);
+        Controls.Add(lblVersion);
+        Controls.Add(lnkRepo);
         Controls.Add(btnCheck);
         Controls.Add(lblResult);
         Controls.Add(lnkDownload);
-        Controls.Add(lblVersion);
-        Controls.Add(lnkRepo);
         Controls.Add(btnOpenConfig);
         Controls.Add(btnOpenLogs);
         Controls.Add(btnClose);
@@ -107,36 +129,92 @@ class SettingsForm : Form
         CancelButton = btnClose;
     }
 
-    // simple dark adaptation: form + control colors only, no elaborate theming
+    // full light/dark adaptation across form + separators + every control
     void ApplyTheme()
     {
-        bool dark = Config.IsDarkMode();
-        Color back = dark ? Color.FromArgb(32, 32, 32) : SystemColors.Control;
-        Color fore = dark ? Color.FromArgb(240, 240, 240) : SystemColors.ControlText;
+        bool dark = themeOverride ?? Config.IsDarkMode();
+        Color back = dark ? Color.FromArgb(0x20, 0x20, 0x20) : SystemColors.Control;       // form background
+        Color fore = dark ? Color.FromArgb(0xF0, 0xF0, 0xF0) : SystemColors.ControlText;   // primary text
+        Color line = dark ? Color.FromArgb(0x3F, 0x3F, 0x3F) : Color.FromArgb(0xC8, 0xC8, 0xC8); // separator line
+        Color btnBack = dark ? Color.FromArgb(0x45, 0x45, 0x45) : SystemColors.Control;    // normal button bg
+        Color btnBorder = dark ? Color.FromArgb(0x54, 0x54, 0x54) : Color.FromArgb(0xB0, 0xB0, 0xB0);
+        Color btnHover = dark ? Color.FromArgb(0x56, 0x56, 0x56) : Color.FromArgb(0xE8, 0xF0, 0xFE);
+        Color link = dark ? Color.FromArgb(0x8F, 0xC3, 0xFF) : Color.Blue;
+        Color dim = dark ? Color.FromArgb(0xAA, 0xAA, 0xAA) : Color.FromArgb(0x66, 0x66, 0x66);   // version (dim)
+
         BackColor = back;
         ForeColor = fore;
-        foreach (Control c in Controls)
-        {
-            if (c is ComboBox || c is CheckBox || c is Label)
-            {
-                c.BackColor = back;
-                c.ForeColor = fore;
-            }
-        }
-        lnkRepo.LinkColor = dark ? Color.FromArgb(120, 180, 255) : Color.Blue;
-        lnkDownload.LinkColor = dark ? Color.FromArgb(120, 180, 255) : Color.Blue;
+
+        lineGeneral.BackColor = line;
+        lineAbout.BackColor = line;
+
+        lblSecGeneral.ForeColor = fore;
+        lblSecAbout.ForeColor = fore;
+        lblLanguage.ForeColor = fore;
+        lblResult.ForeColor = fore;
+        lblVersion.ForeColor = dim;
+
+        StyleRadio(radioAuto, fore);
+        StyleRadio(radioZh, fore);
+        StyleRadio(radioEn, fore);
+        StyleCheckBox(chkAutoRestart, fore);
+        StyleCheckBox(chkAutostart, fore);
+
+        StyleButton(btnCheck, btnBack, fore, btnBorder, btnHover);
+        StyleButton(btnOpenConfig, btnBack, fore, btnBorder, btnHover);
+        StyleButton(btnOpenLogs, btnBack, fore, btnBorder, btnHover);
+        // brand-blue primary button, identical in both themes
+        StyleButton(btnClose, Color.FromArgb(0x0F, 0x6C, 0xBD), Color.White,
+            Color.FromArgb(0x0F, 0x6C, 0xBD), Color.FromArgb(0x17, 0x72, 0xC9));
+
+        lnkRepo.LinkColor = link;
+        lnkRepo.LinkBehavior = LinkBehavior.HoverUnderline;
+        lnkDownload.LinkColor = link;
+        lnkDownload.LinkBehavior = LinkBehavior.HoverUnderline;
+    }
+
+    static void StyleRadio(RadioButton rb, Color fore)
+    {
+        rb.ForeColor = fore;
+        rb.UseVisualStyleBackColor = false;
+        // BackColor left inherited; the radio dot/ring stays system-drawn (accepted)
+    }
+
+    static void StyleCheckBox(CheckBox cb, Color fore)
+    {
+        cb.ForeColor = fore;
+        cb.UseVisualStyleBackColor = false;
+        // BackColor left inherited; the checkbox square stays system-drawn (accepted)
+    }
+
+    static void StyleButton(Button b, Color back, Color fore, Color border, Color hover)
+    {
+        b.FlatStyle = FlatStyle.Flat;
+        b.BackColor = back;
+        b.ForeColor = fore;
+        b.FlatAppearance.BorderSize = 1;
+        b.FlatAppearance.BorderColor = border;
+        b.FlatAppearance.MouseOverBackColor = hover;
+        b.FlatAppearance.MouseDownBackColor = hover;
+        b.UseVisualStyleBackColor = false;
     }
 
     void ApplyLang()
     {
         applyingLang = true;
         Text = Lang.T("settings.title");
+        lblSecGeneral.Text = Lang.T("settings.groupGeneral");
+        lblSecAbout.Text = Lang.T("settings.groupAbout");
         lblLanguage.Text = Lang.T("settings.language");
-        cmbLang.Items.Clear();
-        cmbLang.Items.Add(Lang.T("settings.langAuto"));
-        cmbLang.Items.Add(Lang.T("settings.langZh"));
-        cmbLang.Items.Add(Lang.T("settings.langEn"));
-        cmbLang.SelectedIndex = IndexOfLang(langCode);
+        radioAuto.Text = Lang.T("settings.langAuto");
+        radioZh.Text = Lang.T("settings.langZh");
+        radioEn.Text = Lang.T("settings.langEn");
+        // dynamic equal spacing: recompute Left after text widths settle (AutoSize)
+        radioZh.Left = radioAuto.Right + 16;
+        radioEn.Left = radioZh.Right + 16;
+        radioAuto.Checked = (langCode == "");
+        radioZh.Checked = (langCode == "zh");
+        radioEn.Checked = (langCode == "en");
         chkAutoRestart.Text = Lang.T("settings.autoRestart");
         chkAutostart.Text = Lang.T("settings.autostart");
         btnCheck.Text = Lang.T("settings.checkUpdate");
@@ -149,21 +227,15 @@ class SettingsForm : Form
         applyingLang = false;
     }
 
-    static int IndexOfLang(string code)
-    {
-        if (code == "en") return 2;
-        if (code == "zh") return 1;
-        return 0; // "" / auto
-    }
-
-    void OnLangChanged()
+    // only fire on a radio becoming checked (radio groups emit both an uncheck and a check)
+    void OnLangChanged(RadioButton rb)
     {
         if (applyingLang) return;
-        int idx = cmbLang.SelectedIndex;
-        if (idx == 1) langCode = "zh";
-        else if (idx == 2) langCode = "en";
-        else langCode = "";
-        Lang.Switch(langCode == "" ? "" : langCode);
+        if (!rb.Checked) return;
+        if (rb == radioAuto) langCode = "";
+        else if (rb == radioZh) langCode = "zh";
+        else if (rb == radioEn) langCode = "en";
+        Lang.Switch(langCode);
         ApplyLang();
     }
 

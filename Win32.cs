@@ -21,6 +21,13 @@ static class Win32
     public const uint TOKEN_QUERY = 0x0008;
     public const int TokenIntegrityLevel = 25;
 
+    // ---- WM_PRINT off-screen rendering (renders nonclient+client+children into a DC) ----
+    [DllImport("user32.dll")]
+    public static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+    public const int WM_PRINT = 0x0317;
+    // NONCLIENT(0x02) | CLIENT(0x04) | ERASEBKGND(0x08) | CHILDREN(0x10)
+    public const int PRF_ALL = 0x1E;
+
     // ---- window reload (refresh the Chrome app window) ----
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);

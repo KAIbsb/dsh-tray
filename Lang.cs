@@ -42,6 +42,8 @@ static class Lang
         zh["settings.openConfig"] = "打开配置文件";
         zh["settings.openLogs"] = "打开日志文件夹";
         zh["settings.close"] = "关闭";
+        zh["settings.groupGeneral"] = "通用";
+        zh["settings.groupAbout"] = "关于 / 更新";
 
         en["menu.open"] = "Open Window";
         en["menu.start"] = "Start";
@@ -73,6 +75,8 @@ static class Lang
         en["settings.openConfig"] = "Open config file";
         en["settings.openLogs"] = "Open logs folder";
         en["settings.close"] = "Close";
+        en["settings.groupGeneral"] = "General";
+        en["settings.groupAbout"] = "About / Updates";
 
         if (!string.IsNullOrEmpty(iniLang))
             Code = (iniLang.Trim().ToLowerInvariant() == "en") ? "en" : "zh";

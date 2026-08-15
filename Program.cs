@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Reflection;
 using System.Text;
@@ -45,13 +48,14 @@ static class Program
             }
 
             // diagnostic one-shot modes: need full config detection, still early-return
-            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test")
+            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test" || args[1] == "--ui-preview")
             {
                 Logging.InitLog();
                 Config.InitConfig();
                 if (args[1] == "--smoke") { RunSmoke(); return; }
                 if (args[1] == "--find-window") { RunFindWindow(); return; }
                 if (args[1] == "--menu-test") { RunMenuTest(); return; }
+                if (args[1] == "--ui-preview") { RunUiPreview(); return; }
             }
         }
 
@@ -156,5 +160,51 @@ static class Program
         {
             try { File.WriteAllText(Path.Combine(dir, "menu-test.txt"), "menu-test FAIL: " + ex.Message, Encoding.UTF8); } catch (Exception ex2) { Logging.Log("RunMenuTest write failed: " + ex2.Message); }
         }
+    }
+
+    // ---- headless, dev-only: render the settings dialog (light + dark) to 1.5x PNGs ----
+    static void RunUiPreview()
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        var dp = new DshProcess(Config.Current);
+        RenderSettingsPreview(dp, false, "settings-preview-light.png");
+        RenderSettingsPreview(dp, true, "settings-preview-dark.png");
+    }
+
+    static void RenderSettingsPreview(DshProcess dp, bool dark, string fileName)
+    {
+        string path = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), fileName);
+        SettingsForm form = null;
+        try
+        {
+            form = new SettingsForm(dp, AppVersion, dark);
+            // show offscreen so every child control handle is created and paint state is
+            // fully initialized, then WM_PRINT renders nonclient+client+children into the HDC
+            form.StartPosition = FormStartPosition.Manual;
+            form.Location = new Point(-32000, -32000);
+            form.Show();
+            Application.DoEvents();
+            using (var bmp = new Bitmap(form.Width, form.Height))
+            using (var g = Graphics.FromImage(bmp))
+            {
+                IntPtr hdc = g.GetHdc();
+                Win32.SendMessage(form.Handle, Win32.WM_PRINT, hdc, (IntPtr)Win32.PRF_ALL);
+                g.ReleaseHdc(hdc);
+                int w = (int)Math.Round(form.Width * 1.5);
+                int h = (int)Math.Round(form.Height * 1.5);
+                using (var scaled = new Bitmap(w, h))
+                using (var g2 = Graphics.FromImage(scaled))
+                {
+                    g2.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g2.DrawImage(bmp, 0, 0, w, h);
+                    scaled.Save(path, ImageFormat.Png);
+                }
+            }
+            form.Close();
+            Logging.Log("ui-preview written to " + path);
+        }
+        catch (Exception ex) { Logging.Log("ui-preview (" + fileName + ") failed: " + ex.Message); }
+        finally { if (form != null) form.Dispose(); }
     }
 }
