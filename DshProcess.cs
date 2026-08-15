@@ -202,8 +202,8 @@ class DshProcess
     }
 
     // core stop (no state transition): kill owned process + any node on the port, then wait for
-    // the port to free. Called only while state == Stopping.
-    void StopCore()
+    // the port to free. Called only while state == Stopping. Returns whether the port actually freed.
+    bool StopCore()
     {
         bool owned = false;
         int ownedPid = 0;
@@ -243,7 +243,9 @@ class DshProcess
             }
         }
         WaitForPortFree();
-        Logging.Log("StopDsh: done, port open=" + PortOpen(cfg.Port));
+        bool freed = !PortOpen(cfg.Port);
+        Logging.Log("StopDsh: done, port open=" + !freed);
+        return freed;
     }
 
     // ---- async state machine (external callers trigger actions, never write state) ----
@@ -300,8 +302,22 @@ class DshProcess
             userStopped = true;
             state = DshState.Stopping;
         }
-        await Task.Run(() => StopCore());
-        lock (stateLock) { state = DshState.Stopped; }
+        bool freed = await Task.Run(() => StopCore());
+        // a refused stop (e.g. elevated kill declined) can leave a node still serving the port:
+        // adopt it instead of lying with a Stopped state over a live harness
+        bool served = IsPortServed();
+        lock (stateLock)
+        {
+            if (!freed && served)
+            {
+                Logging.Log("StopAsync: port still served after stop, adopting running harness");
+                state = DshState.Running;
+            }
+            else
+            {
+                state = DshState.Stopped;
+            }
+        }
     }
 
     // Running -> (stop -> start) via Stopping/Stopping->Stopped->Starting->Running; Starting or
@@ -322,8 +338,21 @@ class DshProcess
         }
         // cur == Running
         Logging.Log("=== RestartDsh ===");
-        await Task.Run(() => StopCore());
-        lock (stateLock) { state = DshState.Stopped; userStopped = false; }
+        bool freed = await Task.Run(() => StopCore());
+        bool served = IsPortServed();
+        lock (stateLock)
+        {
+            if (!freed && served)
+            {
+                // stop failed but a node still serves the port: adopt, no fresh start
+                state = DshState.Running;
+                userStopped = false;
+                Logging.Log("RestartAsync: stop failed, adopting running harness");
+                return;
+            }
+            state = DshState.Stopped;
+            userStopped = false;
+        }
         await StartAsync();
     }
 
@@ -470,7 +499,7 @@ class DshProcess
         if (targetIntegrity > selfIntegrity) { Reject(pid, "target integrity higher than self"); return false; }
 
         // 5. target command line must contain our dsh entry (WMI); empty/error -> refuse
-        if (!CommandLineContainsDshEntry(pid)) { Reject(pid, "command line does not contain dsh entry"); return false; }
+        if (!CommandLineLooksLikeDsh(pid)) { Reject(pid, "command line does not look like dsh"); return false; }
 
         Logging.Log("=== elevated kill start: pid=" + pid + " myIntegrity=" + selfIntegrity + " ===");
         Taskkill(pid);
@@ -505,20 +534,25 @@ class DshProcess
         Logging.Log("elevated kill refused (pid=" + pid + "): " + reason);
     }
 
-    bool CommandLineContainsDshEntry(int pid)
+    // fail-closed identity check for the elevated kill: the target command line must look like
+    // the dsh harness. Markers instead of the exact current entry path, so a harness started by
+    // an older build or a different install can still be stopped, while arbitrary node processes
+    // (and anything non-node) are still refused.
+    bool CommandLineLooksLikeDsh(int pid)
     {
         try
         {
-            string dshEntry = cfg.DshEntry;
-            if (string.IsNullOrEmpty(dshEntry)) return false;
             using (var searcher = new ManagementObjectSearcher(
                 "SELECT CommandLine FROM Win32_Process WHERE ProcessId=" + pid))
             {
                 foreach (ManagementObject obj in searcher.Get())
                 {
                     object cl = obj["CommandLine"];
-                    if (cl != null && cl.ToString().IndexOf(dshEntry, StringComparison.OrdinalIgnoreCase) >= 0)
-                        return true;
+                    if (cl == null) continue;
+                    string cmd = cl.ToString();
+                    if (cmd.IndexOf("@deepseek-ai", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    if (cmd.IndexOf("bin.js", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    if (cmd.IndexOf("\\dsh", StringComparison.OrdinalIgnoreCase) >= 0) return true;
                 }
             }
             return false;

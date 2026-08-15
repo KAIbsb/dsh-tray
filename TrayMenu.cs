@@ -24,11 +24,9 @@ static class TrayMenu
     static Form menuOwner;
     static int lastLeftClickTick = -1000;
     static System.Windows.Forms.Timer pollTimer;
-    static System.Windows.Forms.Timer flashTimer;
-    static bool flashing;
     static DshProcess dp;
     static string appVersion;
-    static DshState lastState = (DshState)(-1);   // forced mismatch so the first UpdateStatus applies
+    static bool lastUpState;             // change-detection: only re-set the icon when the state flips
     static bool lastDarkState;
 
     // theme flag exposed so Program can log it on startup (set during Init before the tray builds)
@@ -44,13 +42,13 @@ static class TrayMenu
         // seed the change-detection cache with a forced mismatch so the first UpdateStatus
         // always applies the real icon/text (BuildTray only sets a provisional white icon)
         lastDarkState = !darkMode;
-        lastState = (DshState)(-1);
+        lastUpState = false;
         Logging.Log("=== dsh-tray v" + version + " started (integrity=" + dp.SelfIntegrity +
             ", autoRestart=" + dp.AutoRestartEnabled + ", darkMode=" + darkMode + ") ===");
         BuildTray();
         if (dp.State == DshState.Stopped)
         {
-#pragma warning disable 4014 // fire-and-forget initial start; the icon flashes until running
+#pragma warning disable 4014 // fire-and-forget initial start; the status icon settles via UpdateStatus
             dp.StartAsync();
 #pragma warning restore 4014
         }
@@ -59,9 +57,6 @@ static class TrayMenu
         pollTimer.Interval = PollIntervalMs;
         pollTimer.Tick += delegate { PollTick(); };
         pollTimer.Start();
-        flashTimer = new System.Windows.Forms.Timer();
-        flashTimer.Interval = 500;
-        flashTimer.Tick += delegate { FlashTick(); };
         // silent one-shot GitHub update check; result is read on the next menu build
         UpdateCheck.CheckOnce(appVersion);
     }
@@ -69,7 +64,6 @@ static class TrayMenu
     public static void Dispose()
     {
         if (pollTimer != null) { pollTimer.Stop(); pollTimer.Dispose(); }
-        if (flashTimer != null) { flashTimer.Stop(); flashTimer.Dispose(); }
         if (whiteIcon != null) whiteIcon.Dispose();
         if (blueIcon != null) blueIcon.Dispose();
         if (darkIcon != null) darkIcon.Dispose();
@@ -278,46 +272,18 @@ static class TrayMenu
         catch (Exception ex) { Logging.Log("BuildIconFromResource(" + resName + ") failed: " + ex.Message); return null; }
     }
 
-    // white <-> blue alternation while starting (startup-in-progress flash)
-    static void FlashTick()
-    {
-        if (tray != null)
-            tray.Icon = (tray.Icon == whiteIcon) ? blueIcon : whiteIcon;
-    }
-
     static void UpdateStatus()
     {
         if (tray == null) return;
-        DshState st = dp.State;
-        if (st == DshState.Starting)
-        {
-            // start in flight: keep flashing white<->blue, never overwrite the icon
-            if (!flashing)
-            {
-                flashing = true;
-                if (flashTimer != null) flashTimer.Start();
-            }
-            lastState = st;
-            return;
-        }
-        // not starting: stop the flash and settle on a static icon
-        bool wasFlashing = flashing;
-        if (flashing)
-        {
-            flashing = false;
-            if (flashTimer != null) flashTimer.Stop();
-        }
-        if (!wasFlashing && st == lastState && darkMode == lastDarkState)
+        // simple two-state icon: blue = running, white/dark = stopped (no flashing)
+        bool up = dp.State == DshState.Running;
+        if (up == lastUpState && darkMode == lastDarkState)
             return; // nothing changed
-        lastState = st;
+        lastUpState = up;
         lastDarkState = darkMode;
-        Icon use = null;
-        // Running -> blue; Stopped and Stopping -> white/dark stopped icon (Stopping gives
-        // immediate "stopped" feedback the moment the user clicks Stop)
-        if (st == DshState.Running) use = blueIcon;
-        else use = darkMode ? whiteIcon : darkIcon;
+        Icon use = up ? blueIcon : (darkMode ? whiteIcon : darkIcon);
         if (use != null) tray.Icon = use;
-        tray.Text = (st == DshState.Running) ? Lang.T("tray.running") : Lang.T("tray.stopped");
+        tray.Text = up ? Lang.T("tray.running") : Lang.T("tray.stopped");
     }
 
     // open the GitHub releases page for the "download update" menu item
