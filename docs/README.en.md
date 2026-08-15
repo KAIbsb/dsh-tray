@@ -21,6 +21,8 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 - **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `harness.log` independent of the tray's lifetime
 - **Auto-refresh on restart**: refreshes the browser app-mode window when a restart finishes
 - **On-demand elevation**: if the harness runs as administrator, the tray elevates itself to kill it (silent when UAC is set to "never notify")
+- **Manual theme**: follow system / light / dark (settings window; ini `theme` key)
+- **Auto-update**: one-click download + sha256 verification + deploy hint from the settings window when a new version is found
 - **Logs**: `%LOCALAPPDATA%\dsh-tray\tray.log`, auto-rotated past 5 MB
 
 ## Download & Install
@@ -28,7 +30,7 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 - Download the latest `dsh-tray.exe` from [Releases](https://github.com/KAIbsb/dsh-tray/releases)
 - **Single file, zero dependencies**: no runtime to install (Windows 10/11 ships .NET Framework 4.8), just double-click to run
 - **First run**: as an unsigned tool, SmartScreen may show "Unknown publisher" — click "More info" → "Run anyway" (see FAQ)
-- **Upgrading**: overwrite the old exe with the new one; your settings (autostart, auto-restart, `dshtray.ini`) are untouched
+- **Upgrading**: overwrite the old exe with the new one; your settings (autostart, auto-restart, `dshtray.ini`) are untouched. When the settings window detects a new version you can also auto-update in one click (download + verification + deploy hint)
 - Want to build it yourself or contribute? See the [developer documentation](DEVELOPMENT.md)
 
 ## Quick Start
@@ -94,13 +96,14 @@ url = http://127.0.0.1:3080   # default; port derived from the URL (change it fo
 lang =                        # UI language zh/en; empty = follow system
 autorestart = true            # auto-restart on crash: true/false
 autostart = false             # start with Windows: true/false (also written to the startup key)
+theme =                       # theme: light/dark, empty = follow system
 node =                        # path to node.exe; empty = auto-detect
 dshentry =                    # path to the dsh entry script; empty = auto-detect
 dshworkdir =                  # dsh working directory; empty = inferred
 chrome =                      # Chromium-family browser path; empty = auto-detect Chrome/Edge
 ```
 
-An empty line means the default / auto-detection for that item (node / dsh entry / browser resolve via PATH, common install paths, npm global directory); deleting or commenting a line works the same. `url` is the only port setting (the port is derived from it). `autostart` is the single source for start-with-Windows; the Windows startup key is only a mirror (synced from the file at startup).
+An empty line means the default / auto-detection for that item (node / dsh entry / browser resolve via PATH, common install paths, npm global directory); deleting or commenting a line works the same. `url` is the only port setting (the port is derived from it). `autostart` is the single source for start-with-Windows; the Windows startup key is only a mirror (synced from the file at startup). The `theme` manual theme (light/dark) takes precedence over the system setting; empty = follow the system.
 
 ## Logs
 

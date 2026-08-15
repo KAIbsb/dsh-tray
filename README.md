@@ -22,6 +22,8 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 - **无终端窗口**:隐藏拉起 `node dsh web`,输出重定向到独立日志文件 `harness.log`,与托盘生命周期解耦
 - **重启后自动刷新窗口**:重启完成自动刷新浏览器 APP 模式窗口
 - **按需提权**:harness 若以管理员身份运行,托盘自动以管理员身份执行 kill(UAC 为「从不通知」时静默)
+- **手动主题**:跟随系统 / 亮 / 暗(设置窗切换,存 ini `theme` 键)
+- **自动更新**:发现新版时设置窗一键下载 + 校验(sha256)+ 部署提示
 - **日志**:`%LOCALAPPDATA%\dsh-tray\tray.log`,超过 5MB 自动轮转
 
 ## 下载与安装
@@ -29,7 +31,7 @@ DeepSeek Harness 的 Windows 托盘管家:启动 / 重启 / 停止 / 崩溃自�
 - 从 [Releases](https://github.com/KAIbsb/dsh-tray/releases) 下载最新的 `dsh-tray.exe`
 - **单文件,零依赖**:无需安装任何运行时(Windows 10/11 自带 .NET Framework 4.8),双击即用
 - **首次运行提示**:未签名的小工具会被 SmartScreen 提示「未知发布者」→ 点「更多信息」→「仍要运行」(详见 FAQ)
-- **升级**:下载新 exe 直接覆盖旧文件即可,设置(开机自启、崩溃自动重启、`dshtray.ini`)不受影响
+- **升级**:下载新 exe 直接覆盖旧文件即可,设置(开机自启、崩溃自动重启、`dshtray.ini`)不受影响;设置窗检测到新版时也可一键自动更新(下载 + 校验 + 部署提示)
 - 想自己编译或贡献代码?见 [开发者文档](docs/DEVELOPMENT.md)
 
 ## 快速开始
@@ -95,13 +97,14 @@ url = http://127.0.0.1:3080   # 默认值;端口由 url 推导,改端口直接�
 lang =                        # 界面语言 zh/en,留空 = 跟随系统
 autorestart = true            # 崩溃自动重启 true/false
 autostart = false             # 开机自启 true/false(同时写入 Windows 启动项)
+theme =                       # 亮/暗主题:light/dark,留空 = 跟随系统
 node =                        # Node.js 路径,留空 = 自动检测
 dshentry =                    # dsh 入口脚本路径,留空 = 自动检测
 dshworkdir =                  # dsh 工作目录,留空 = 自动推断
 chrome =                      # Chromium 系浏览器路径,留空 = 自动查找 Chrome/Edge
 ```
 
-留空某行 = 该项使用默认值 / 自动检测(Node/Dsh 入口/浏览器走 PATH、常见安装路径、npm 全局目录);删除或注释某行同样生效。`url` 是唯一的端口配置项(端口由其自动推导)。`autostart` 是开机自启的唯一来源,Windows 启动项只是它的镜像(启动时按文件同步)。
+留空某行 = 该项使用默认值 / 自动检测(Node/Dsh 入口/浏览器走 PATH、常见安装路径、npm 全局目录);删除或注释某行同样生效。`url` 是唯一的端口配置项(端口由其自动推导)。`autostart` 是开机自启的唯一来源,Windows 启动项只是它的镜像(启动时按文件同步)。`theme` 手动主题(light/dark)优先于系统设置,留空 = 跟随系统。
 
 ## 日志
 

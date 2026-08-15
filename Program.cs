@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
-[assembly: AssemblyVersion("1.1.1.0")]
-[assembly: AssemblyFileVersion("1.1.1.0")]
+[assembly: AssemblyVersion("1.1.2.0")]
+[assembly: AssemblyFileVersion("1.1.2.0")]
 [assembly: AssemblyProduct("dsh-tray")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
 

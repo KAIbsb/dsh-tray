@@ -17,8 +17,9 @@ IniFile.cs        minimal ini reader/writer (comments preserved, keys updated in
 DshProcess.cs     harness process state machine: start/stop/restart/self-heal poll/liveness/elevated kill
 WindowMgr.cs      browser app window: open, reload (Ctrl+R), enumerate
 TrayMenu.cs       tray icon, native menu, theme, poll
-SettingsForm.cs   settings window (language hot-switch / toggles / update check / about)
-UpdateCheck.cs    GitHub Releases check (background silent, 8s timeout, TLS 1.2)
+SettingsForm.cs   settings window (language/theme hot-switch / toggles / check & auto-update / about)
+UpdateCheck.cs    GitHub Releases check + auto-update download with sha256 verification (background silent, TLS 1.2)
+UiFeedback.cs     operation-failure / info balloon channel (leaf, event-driven)
 Win32.cs          P/Invoke declarations and dark-theme helpers
 Logging.cs        log writing / rotation (5 MB)
 Lang.cs           UI language table (zh / en)
@@ -44,7 +45,7 @@ Equivalent to invoking the compiler response file directly:
 csc @dsh-tray.rsp
 ```
 
-Compiler flags and the source-file list are consolidated into `dsh-tray.rsp` at the repo root (currently 11 source files plus embedded icon/config-template resources), which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the command copies can't drift apart. `csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build.bat` locates it automatically). The output is a single exe (icon, status icons and the config template all embedded) with no runtime to install.
+Compiler flags and the source-file list are consolidated into `dsh-tray.rsp` at the repo root (currently 12 source files plus embedded icon/config-template resources), which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the command copies can't drift apart. `csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build.bat` locates it automatically). The output is a single exe (icon, status icons and the config template all embedded) with no runtime to install.
 
 During development, when the tray is running and the exe is locked, use the local helper that builds to a temporary name and runs smoke:
 
@@ -54,7 +55,7 @@ cmd /c .devtools\build-dev.bat
 
 ## Release process
 
-1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.1.0.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
+1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.1.2.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
 2. `git tag vX.Y.Z` and `git push --tags`
 3. GitHub Actions compiles, generates the SHA256, and creates a Release with the exe and checksum attached
 
@@ -66,9 +67,11 @@ cmd /c .devtools\build-dev.bat
 - **Stop / restart**: `taskkill /T /F` kills the process tree; if the target runs at a higher integrity level (e.g. an admin-started harness), the tray re-launches itself elevated (`--elevated-kill <pid>`) to kill it (silent when UAC is "never notify")
 - **Native menu**: `CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`. Dark mode follows the system via `uxtheme.dll` `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)`; the owner window must be brought to the foreground before showing the menu (`SetForegroundWindow` + ALT-key trick), otherwise the menu won't dismiss on outside clicks / Esc
 - **Auto-refresh**: enumerates top-level windows of the configured browser (process names from the config plus chrome/msedge fallbacks) and sends Ctrl+R to windows whose title contains "DeepSeek Harness" (foreground first; skipped if focus can't be taken)
-- **Configuration**: `dshtray.ini` is the **single config source** (see README "Configuration") — auto-restart and autostart live in this file too; the autostart ini value is mirrored to the registry Run key at startup; a legacy registry value (`Software\dsh-tray\AutoRestart`) is migrated once at startup. node / dsh / chrome paths are auto-detected when left empty (PATH, common install locations, npm global directory)
-- **Update check**: one silent background request to the GitHub Releases API at startup (failures are logged only); results surface via the "Download Update" menu item and the settings window, never as popups
+- **Configuration**: `dshtray.ini` is the **single config source** (see README "Configuration") — auto-restart and autostart live in this file too; the autostart ini value is mirrored to the registry Run key at startup; a legacy registry value (`Software\dsh-tray\AutoRestart`) is migrated once at startup. node / dsh / chrome paths are auto-detected when left empty (PATH, common install locations, npm global directory). The `theme` key (light/dark/empty = follow system) is a manual theme override that takes precedence over the registry
+- **Update check / auto-update**: one silent background request to the GitHub Releases API at startup (failures are logged only); when a new version is found it surfaces in the menu and the settings window. The settings window's "Auto-update" runs `UpdateCheck.DownloadAndVerify` (downloads the exe + sha256 verification); when the running exe is locked it keeps the verified `.new` and prompts for a manual replace
+- **Operation feedback**: `UiFeedback` is an event channel (`Fail` for failures / `Info` for informational); TrayMenu subscribes and shows a 4-second balloon (Error / Info icon). It is used only for "a user-initiated action failed" and "update ready" — passive paths like start/elevation failures never pop up
 - **UI language**: `Lang.cs`; precedence: `dshtray.ini` `lang` override > system UI language; the settings window can hot-switch and writes back to the ini
+- **Manual theme**: the settings window "Theme" row (follow system / light / dark) writes the ini `theme` key; `Config.IsDarkMode` reads the override first and falls back to the registry when empty; it applies immediately — `TrayMenu.ApplyThemeNow()` refreshes the tray icon, uxtheme and the open settings dialog
 
 ## Testing & diagnostics
 

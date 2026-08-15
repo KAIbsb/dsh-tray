@@ -29,3 +29,7 @@ Autostart records the exe's path at the time it was enabled. After moving the ex
 ## Does dsh-tray access the network?
 
 On startup it silently checks GitHub for the latest version once in the background (only once; works offline, fails silently, no popup); otherwise it does not access the network. Beyond that it only works locally: starting/stopping local processes, reading/writing the registry and logs, and launching your local browser when you choose "Open Window".
+
+## How do I switch the light/dark theme?
+
+In the settings window, the "Theme" row lets you pick "Follow system / Light / Dark" and it applies immediately. Alternatively edit `dshtray.ini` next to the exe directly: write `theme = light` (light) or `theme = dark` (dark); leave it empty (or delete the line) to follow the system — this takes effect after the tray restarts.
