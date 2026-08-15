@@ -108,6 +108,23 @@ class DshProcess
         return false;
     }
 
+    // Build the cmd wrapper command with %VAR% placeholders. The actual node/entry/log values
+    // are passed via environment variables (ApplyLaunchEnv) so cmd expands them literally — a
+    // value containing `& | ^ ( ) < >` stays literal and cannot break the quoting structure or
+    // inject commands. Windows paths cannot contain `"`, so the quote structure is safe.
+    public static string BuildLaunchCmd()
+    {
+        return "/c \"\"%DSH_TRAY_NODE%\" \"%DSH_TRAY_ENTRY%\" web >> \"%DSH_TRAY_LOG%\" 2>&1\"";
+    }
+
+    // copy the launch parameters into the child environment (must run before Process.Start)
+    public void ApplyLaunchEnv(ProcessStartInfo psi, string dshLog)
+    {
+        psi.EnvironmentVariables["DSH_TRAY_NODE"] = cfg.NodePath;
+        psi.EnvironmentVariables["DSH_TRAY_ENTRY"] = cfg.DshEntry;
+        psi.EnvironmentVariables["DSH_TRAY_LOG"] = dshLog;
+    }
+
     public void StartDsh()
     {
         userStopped = false;
@@ -120,15 +137,15 @@ class DshProcess
             // spawn via cmd with stdout/stderr redirected to a FILE: the harness must not
             // depend on the tray's lifetime (a broken pipe EPIPE kills node in ~1s)
             string dshLog = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
-            string cmdArgs = "/c \"\"" + cfg.NodePath + "\" \"" + cfg.DshEntry + "\" web >> \"" + dshLog + "\" 2>&1\"";
             var psi = new ProcessStartInfo
             {
                 FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
-                Arguments = cmdArgs,
+                Arguments = BuildLaunchCmd(),
                 WorkingDirectory = cfg.DshWorkDir,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            ApplyLaunchEnv(psi, dshLog);
             Process proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
             proc.Exited += dshProcExited;
             proc.Start();
