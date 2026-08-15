@@ -66,10 +66,8 @@ harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标�
 重启        ← harness 运行时可用
 停止        ← 只停 harness,托盘不退
 ────────
-☑ 崩溃自动重启
-☐ 开机自启
+设置…
 ────────
-打开日志
 退出        ← 仅退出托盘,harness 保持运行(停止用「停止」)
 ```
 
@@ -97,17 +95,17 @@ node = C:\path\to\node.exe
 dshentry = C:\path\to\dsh\lib\bin.js
 dshworkdir = C:\path\to\dsh
 chrome = C:\path\to\chrome.exe
-port = 3080
-lang = zh        # 界面语言 zh/en,缺省跟随系统
+url = http://127.0.0.1:3080   # 端口由 url 自动推导,自定义端口直接改 url
+lang = zh                    # 界面语言 zh/en,缺省跟随系统
 ```
 
-优先级:ini 显式值 > 自动探测(PATH / 常见安装路径 / npm 全局目录)。Chrome / Edge 自动探测;其他 Chromium 系浏览器(Brave / Opera / Vivaldi 等)用 `chrome =` 指定即可。
+优先级:ini 显式值 > 自动探测(PATH / 常见安装路径 / npm 全局目录)。Chrome / Edge 自动探测;其他 Chromium 系浏览器(Brave / Opera / Vivaldi 等)用 `chrome =` 指定即可。`url` 是唯一的端口配置项(端口由其自动推导),不再提供单独的 `port` 键。
 
 ## 日志
 
 - `%LOCALAPPDATA%\dsh-tray\tray.log` —— 托盘自身操作记录(启动 / 停止 / 重启 / 提权 / 自动重启等),超 5MB 自动轮转为 `tray.log.old`
 - `%LOCALAPPDATA%\dsh-tray\harness.log` —— harness 输出,独立于托盘生命周期(托盘退出后仍在写入)
-- 托盘菜单「打开日志」会同时打开这两个文件
+- 托盘菜单已无「打开日志」;可在设置窗口(菜单「设置…」)里打开日志文件夹
 
 ## FAQ
 
@@ -125,11 +123,11 @@ dsh-tray 是未签名的小工具,首次运行会被 Windows SmartScreen 拦截�
 
 **托盘的鲸鱼图标不随系统深浅色变化?**
 
-图标每 3 秒检查一次主题,切换后最多 3 秒更新。仍不变的话,看日志(菜单「打开日志」)里是否有 `theme changed` 记录。
+图标每 3 秒检查一次主题,切换后最多 3 秒更新。仍不变的话,看日志(设置窗口 → 打开日志文件夹)里是否有 `theme changed` 记录。
 
 **如何修改监听端口?**
 
-在 exe 同目录创建 `dshtray.ini`,写入 `port = 你的端口`(见「配置」)。
+在 exe 同目录创建 `dshtray.ini`,写入 `url = http://127.0.0.1:<你的端口>`(端口由 url 自动推导,见「配置」)。
 
 **移动了 exe 位置后开机自启失效?**
 

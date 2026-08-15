@@ -144,14 +144,13 @@ static class Program
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.restart"), delegate { }, true, false));
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.stop"), delegate { }, true, false));
             defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.openLogs"), delegate { }, true, false));
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.settings"), delegate { }, true, false));
             defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.exit"), delegate { }, true, false));
             List<Action> actions;
             IntPtr hmenu;
             actions = TrayMenu.BuildNativeMenu(defs, out hmenu);
-            bool ok = hmenu != IntPtr.Zero && actions.Count == 7;
+            bool ok = hmenu != IntPtr.Zero && actions.Count == 6;
             if (hmenu != IntPtr.Zero) Win32.DestroyMenu(hmenu);
             File.WriteAllText(Path.Combine(dir, "menu-test.txt"),
                 ok ? "menu-test OK (items=" + actions.Count + ")" : "menu-test FAIL", Encoding.UTF8);

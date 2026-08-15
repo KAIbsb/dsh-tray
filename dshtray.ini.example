@@ -1,36 +1,33 @@
-; ==================== dsh-tray 配置文件 ====================
-; 本文件是可选的。所有键都用 ; 或 # 注释掉时(默认),程序自动检测一切。
+; ==================== dsh-tray 配置文件模板 ====================
+; 本文件可选:全部键留空(全部注释掉)= 全自动检测。
 ; 修改后保存,下次启动托盘生效。
 ;
-; This file is optional. When every key is commented out (the default),
-; dsh-tray auto-detects node, the dsh entry script, Chrome/Edge and the URL.
-; Changes take effect the next time the tray starts.
+; This file is optional: leave every key empty (all commented out)
+; for full auto-detection. Changes take effect on the next start.
 ; ==========================================================
 
 ; Node.js 可执行文件路径(留空自动检测)
-; Path to node.exe (leave empty to auto-detect)
-;node=C:\Program Files\nodejs\node.exe
+; Path to node.exe (empty = auto-detect)
+;node=
 
 ; dsh 入口脚本路径(留空自动检测)
-; Path to the dsh entry script (leave empty to auto-detect)
-;dshentry=C:\Program Files\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js
+; Path to the dsh entry script (empty = auto-detect)
+;dshentry=
 
-; dsh 的工作目录(留空自动推断)
-; Working directory for dsh (leave empty to infer)
-;dshworkdir=C:\Program Files\nodejs\node_modules
+; dsh 工作目录(留空自动推断)
+; Working directory for dsh (empty = infer)
+;dshworkdir=
 
-; Chromium 系浏览器可执行文件(默认自动查找 Chrome / Edge)
-; Chromium-family browser exe (auto-detects Chrome / Edge by default)
-;chrome=C:\Program Files\Google\Chrome\Application\chrome.exe
+; Chromium 系浏览器可执行文件(留空自动查找 Chrome / Edge)
+; Chromium-family browser exe (empty = auto-detect Chrome / Edge)
+;chrome=
 
-; Harness 网页地址(与 port 二选一即可;设置 url 会自动反推端口)
-; Harness web URL (either this or port; url wins and derives the port)
-;url=http://127.0.0.1:3080
-
-; 端口(设置后自动改写 url;默认 3080)
-; Port (setting it rewrites url; default 3080)
-;port=3080
+; Harness 网页地址。端口由 url 自动推导(默认 3080),无需单独配置端口;
+; 若需自定义端口,直接把 url 改成对应端口即可。
+; Harness web URL. The port is derived from the URL (default 3080),
+; so there is no separate port key; to use a custom port, just change the URL.
+;url=
 
 ; 界面语言:zh / en(留空跟随系统)
 ; UI language: zh / en (empty = follow the system)
-;lang=zh
+;lang=

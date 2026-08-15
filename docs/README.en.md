@@ -65,10 +65,8 @@ Start           ← available when the harness is stopped
 Restart         ← available when running
 Stop            ← stops the harness only; the tray stays
 ────────
-☑ Auto-restart on Crash
-☐ Start with Windows
+Settings…
 ────────
-Open Logs
 Exit            ← exits the tray only; the harness keeps running (use Stop to stop it)
 ```
 
@@ -96,17 +94,17 @@ node = C:\path\to\node.exe
 dshentry = C:\path\to\dsh\lib\bin.js
 dshworkdir = C:\path\to\dsh
 chrome = C:\path\to\chrome.exe
-port = 3080
-lang = en        # UI language zh/en; defaults to the system UI language
+url = http://127.0.0.1:3080   # port is derived from the URL; set a custom port here
+lang = en                    # UI language zh/en; defaults to the system UI language
 ```
 
-Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory). Chrome and Edge are auto-detected; for other Chromium-based browsers (Brave / Opera / Vivaldi etc.) point the `chrome` key at their exe.
+Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory). Chrome and Edge are auto-detected; for other Chromium-based browsers (Brave / Opera / Vivaldi etc.) point the `chrome` key at their exe. `url` is the only port setting (the port is derived from it); there is no separate `port` key.
 
 ## Logs
 
 - `%LOCALAPPDATA%\dsh-tray\tray.log` — tray operations (start / stop / restart / elevation / auto-restart etc.), auto-rotated to `tray.log.old` past 5 MB
 - `%LOCALAPPDATA%\dsh-tray\harness.log` — harness output, independent of the tray's lifetime (keeps writing after the tray exits)
-- The tray menu's "Open Logs" item opens both files
+- The tray menu no longer has "Open Logs"; open the logs folder from the settings window ("Settings…")
 
 ## FAQ
 
@@ -124,11 +122,11 @@ When the harness was started as administrator, stopping/restarting it requires a
 
 **The tray whale icon doesn't follow the light/dark theme?**
 
-The theme is checked every 3 seconds, so the icon updates within 3 seconds of switching. If it still doesn't change, look for a `theme changed` entry in the log (tray menu → Open Logs).
+The theme is checked every 3 seconds, so the icon updates within 3 seconds of switching. If it still doesn't change, look for a `theme changed` entry in the log (settings window → open logs folder).
 
 **How do I change the listening port?**
 
-Create a `dshtray.ini` next to the exe with `port = <your port>` (see [Configuration](#configuration)).
+Create a `dshtray.ini` next to the exe with `url = http://127.0.0.1:<your port>` (the port is derived from the URL; see [Configuration](#configuration)).
 
 **Autostart stopped working after I moved the exe?**
 

@@ -123,7 +123,6 @@ static class TrayMenu
             defs.Add(new MenuDef(Lang.T("menu.restart"), delegate { dp.RestartDsh(); WindowMgr.ReloadAppWindow(); UpdateStatus(); }, up, false));
             defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { if (dp.IsUp) { dp.UserStopped = true; dp.StopDsh(); UpdateStatus(); } }, up, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef(Lang.T("menu.openLogs"), OpenLog, true, false));
             defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { new SettingsForm(dp, appVersion).ShowDialog(); }, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
             if (UpdateCheck.IsNewerAvailable)
@@ -255,30 +254,6 @@ static class TrayMenu
         else use = darkMode ? whiteIcon : darkIcon;
         if (use != null) tray.Icon = use;
         tray.Text = up ? Lang.T("tray.running") : Lang.T("tray.stopped");
-    }
-
-    static void OpenLog()
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "notepad.exe",
-                Arguments = "\"" + Logging.LogPath + "\"",
-                UseShellExecute = false
-            });
-            string dshLog = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
-            if (File.Exists(dshLog))
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "notepad.exe",
-                    Arguments = "\"" + dshLog + "\"",
-                    UseShellExecute = false
-                });
-            }
-        }
-        catch (Exception ex) { Logging.Log("OpenLog failed: " + ex.Message); }
     }
 
     // open the GitHub releases page for the "download update" menu item
