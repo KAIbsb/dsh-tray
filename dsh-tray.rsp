@@ -6,6 +6,7 @@
 /win32manifest:app.manifest
 /resource:assets\whale-blue.png,whale-blue.png
 /resource:assets\whale-dark.png,whale-dark.png
+/resource:dshtray.ini.example,dshtray.ini.example
 /r:System.Drawing.dll
 /r:System.Windows.Forms.dll
 /out:dsh-tray.exe
