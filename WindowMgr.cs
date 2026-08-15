@@ -29,7 +29,7 @@ static class WindowMgr
                 Logging.Log("OpenWindow: no chrome/edge found, opened in default browser");
             }
         }
-        catch (Exception ex) { Logging.Log("OpenWindow failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("OpenWindow failed: " + ex.Message); UiFeedback.Fail(Lang.T("feedback.openWindowFailed")); }
     }
 
     // enumerate top-level windows owned by a configured browser (Chrome/Edge/etc.), returning

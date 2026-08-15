@@ -314,7 +314,7 @@ class SettingsForm : Form
             Config.EnsureIni();
             Process.Start(new ProcessStartInfo { FileName = Path.Combine(Environment.SystemDirectory, "notepad.exe"), Arguments = "\"" + ini + "\"", UseShellExecute = false });
         }
-        catch (Exception ex) { Logging.Log("SettingsForm open config failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("SettingsForm open config failed: " + ex.Message); UiFeedback.Fail(Lang.T("feedback.openConfigFailed")); }
     }
 
     void OpenLogsFolder()
@@ -329,6 +329,6 @@ class SettingsForm : Form
                 Process.Start("explorer.exe", "\"" + dir + "\"");
             }
         }
-        catch (Exception ex) { Logging.Log("SettingsForm open logs failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("SettingsForm open logs failed: " + ex.Message); UiFeedback.Fail(Lang.T("feedback.openLogsFailed")); }
     }
 }

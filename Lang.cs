@@ -42,6 +42,9 @@ static class Lang
         zh["settings.close"] = "关闭";
         zh["settings.groupGeneral"] = "通用";
         zh["settings.groupAbout"] = "关于 / 更新";
+        zh["feedback.openWindowFailed"] = "打开窗口失败,详情见日志";
+        zh["feedback.openLogsFailed"] = "打开日志文件夹失败,详情见日志";
+        zh["feedback.openConfigFailed"] = "打开配置文件失败,详情见日志";
 
         en["menu.open"] = "Open Window";
         en["menu.start"] = "Start";
@@ -73,6 +76,9 @@ static class Lang
         en["settings.close"] = "Close";
         en["settings.groupGeneral"] = "General";
         en["settings.groupAbout"] = "About / Updates";
+        en["feedback.openWindowFailed"] = "Failed to open the window; see the log";
+        en["feedback.openLogsFailed"] = "Failed to open the logs folder; see the log";
+        en["feedback.openConfigFailed"] = "Failed to open the config file; see the log";
 
         if (!string.IsNullOrEmpty(iniLang))
             Code = (iniLang.Trim().ToLowerInvariant() == "en") ? "en" : "zh";

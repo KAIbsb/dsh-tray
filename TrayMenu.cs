@@ -47,6 +47,8 @@ static class TrayMenu
         Logging.Log("=== dsh-tray v" + version + " started (integrity=" + dp.SelfIntegrity +
             ", autoRestart=" + dp.AutoRestartEnabled + ", darkMode=" + darkMode + ") ===");
         BuildTray();
+        // operation-failure feedback: the tray owns the NotifyIcon, so it is the balloon owner
+        UiFeedback.BalloonRequested += OnBalloon;
         if (dp.State == DshState.Stopped)
         {
 #pragma warning disable 4014 // fire-and-forget initial start; the status icon settles via UpdateStatus
@@ -64,12 +66,20 @@ static class TrayMenu
 
     public static void Dispose()
     {
+        // static event: unsubscribe so a reload / re-Init cannot double-fire the balloon handler
+        UiFeedback.BalloonRequested -= OnBalloon;
         if (pollTimer != null) { pollTimer.Stop(); pollTimer.Dispose(); }
         if (whiteIcon != null) whiteIcon.Dispose();
         if (blueIcon != null) blueIcon.Dispose();
         if (darkIcon != null) darkIcon.Dispose();
         if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
         if (menuOwner != null) { menuOwner.Dispose(); menuOwner = null; }
+    }
+
+    // UiFeedback subscriber: shows a non-intrusive failure balloon on the tray icon
+    static void OnBalloon(string msg)
+    {
+        if (tray != null) tray.ShowBalloonTip(4000, "dsh-tray", msg, ToolTipIcon.Error);
     }
 
     static void PollTick()
