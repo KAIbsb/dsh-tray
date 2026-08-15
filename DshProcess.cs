@@ -118,13 +118,24 @@ class DshProcess
         psi.EnvironmentVariables["DSH_TRAY_LOG"] = dshLog;
     }
 
+    // result of the core spawn
+    enum StartResult { Launched, AlreadyUp, Failed }
+
     // core spawn (no state transition): precondition checks + cmd spawn. Returns whether the
     // process was actually launched. Called only while state == Starting.
-    bool StartCore()
+    StartResult StartCore()
     {
         lastStartTick = Environment.TickCount;
-        if (cfg.NodePath == null || !File.Exists(cfg.NodePath)) { Logging.Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return false; }
-        if (cfg.DshEntry == null || !File.Exists(cfg.DshEntry)) { Logging.Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return false; }
+        // adopt an already-running harness (e.g. left up by a previous tray session): never
+        // spawn a second instance — it dies on the port conflict and the Exited handler would
+        // wrongly collapse the state to Stopped
+        if (IsPortServed())
+        {
+            Logging.Log("StartCore: existing harness on port " + cfg.Port + ", adopting");
+            return StartResult.AlreadyUp;
+        }
+        if (cfg.NodePath == null || !File.Exists(cfg.NodePath)) { Logging.Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return StartResult.Failed; }
+        if (cfg.DshEntry == null || !File.Exists(cfg.DshEntry)) { Logging.Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return StartResult.Failed; }
         try
         {
             // spawn via cmd with stdout/stderr redirected to a FILE: the harness must not
@@ -144,9 +155,18 @@ class DshProcess
             proc.Start();
             dshProc = proc;
             Logging.Log("StartDsh: launched pid=" + dshProc.Id + " (log=" + dshLog + ")");
-            return true;
+            return StartResult.Launched;
         }
-        catch (Exception ex) { Logging.Log("StartDsh failed: " + ex.Message); return false; }
+        catch (Exception ex) { Logging.Log("StartDsh failed: " + ex.Message); return StartResult.Failed; }
+    }
+
+    // true when the port is already served by a node process (adopt case); identity check so a
+    // non-node occupant never blocks a start
+    bool IsPortServed()
+    {
+        if (!PortOpen(cfg.Port)) return false;
+        int pid = FindPidOnPort(cfg.Port);
+        return pid > 0 && IsNodeProcess(pid);
     }
 
     // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
@@ -157,13 +177,24 @@ class DshProcess
         {
             var p = sender as Process;
             bool current;
-            lock (stateLock)
+            lock (stateLock) { current = p != null && ReferenceEquals(p, dshProc); }
+            if (current)
             {
-                current = (p != null && ReferenceEquals(p, dshProc));
-                // only the live process exiting moves us to Stopped; never auto-restart here
-                // (the poll owns that decision)
-                if (current && (state == DshState.Running || state == DshState.Starting))
-                    state = DshState.Stopped;
+                // probe outside the lock (TCP + maybe netstat): only collapse to Stopped when
+                // the port is really down — our process may have died on a port conflict while
+                // another node instance still serves the harness
+                bool served = IsPortServed();
+                lock (stateLock)
+                {
+                    if (p != null && ReferenceEquals(p, dshProc) &&
+                        (state == DshState.Running || state == DshState.Starting))
+                    {
+                        if (served)
+                            Logging.Log("dsh process exited but port still served by another node; staying up");
+                        else
+                            state = DshState.Stopped;
+                    }
+                }
             }
             Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1) + (current ? "" : " (stale)"));
         }
@@ -232,8 +263,22 @@ class DshProcess
     // continuation after the Starting handoff: shared by StartAsync and PollAutoRestart
     async Task StartFlow()
     {
-        bool launched = StartCore(); // synchronous spawn (fast, non-blocking); no closure needed
-        bool up = launched && await WaitForPortUpAsync();
+        StartResult r = StartCore(); // synchronous spawn (fast, non-blocking); no closure needed
+        if (r == StartResult.AlreadyUp)
+        {
+            // nothing was spawned: the running harness is adopted as ours
+            lock (stateLock)
+            {
+                if (state == DshState.Starting)
+                {
+                    state = DshState.Running;
+                    userStopped = false;
+                }
+            }
+            Logging.Log("StartFlow: adopted existing harness (running)");
+            return;
+        }
+        bool up = (r == StartResult.Launched) && await WaitForPortUpAsync();
         lock (stateLock)
         {
             if (state == DshState.Starting)

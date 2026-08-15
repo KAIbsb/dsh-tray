@@ -313,7 +313,11 @@ class SettingsForm : Form
         {
             string dir = Path.GetDirectoryName(Logging.LogPath);
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                Process.Start(Path.Combine(Environment.SystemDirectory, "explorer.exe"), "\"" + dir + "\"");
+            {
+                // bare name, not the System32 full path: ShellExecute on the full explorer.exe
+                // path fails with "file not found" (verified); explorer resolves via App Paths
+                Process.Start("explorer.exe", "\"" + dir + "\"");
+            }
         }
         catch (Exception ex) { Logging.Log("SettingsForm open logs failed: " + ex.Message); }
     }
