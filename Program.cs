@@ -22,7 +22,25 @@ using Microsoft.Win32;
 
 static class Program
 {
-    const string AppVersion = "1.0.0.0";
+    // version is single-sourced from the assembly version attribute (see AssemblyVersion below);
+    // no hardcoded copy here to avoid drift
+    static readonly string AppVersion = Assembly.GetExecutingAssembly().GetName().Version.ToString();
+
+    // ---- timing / size constants (named to make intent explicit; values unchanged) ----
+    const int PollIntervalMs = 3000;             // status-poll timer cadence
+    const int AutoRestartStartCooldownMs = 10000; // min age of a start attempt before auto-restart
+    const int AutoRestartRetryCooldownMs = 30000; // min gap between two auto-restart attempts
+    const int PortWaitMs = 30000;                 // max time to wait for the port to come up
+    const int PortFreeWaitMs = 8000;              // max time to wait for the port to be released
+    const int PortPollStepMs = 200;               // sleep step while polling port open/free
+    const int PortProbeTimeoutMs = 300;           // TCP connect timeout in PortOpen
+    const int KillSleepMs = 300;                  // pause after a kill before checking liveness
+    const int DoubleClickSwallowMs = 300;         // left-click dedupe window
+    const int ProcessWaitExitMs = 3000;           // WaitForExit timeout for a killed process
+    const int TaskkillWaitMs = 8000;              // taskkill subprocess wait timeout
+    const int NetstatWaitMs = 5000;               // netstat subprocess wait timeout
+    const int ElevatedKillWaitMs = 30000;         // elevated kill helper wait timeout
+    const int LogMaxBytes = 5 * 1024 * 1024;      // rotate the log once it exceeds this size
     // ---- runtime configuration: resolved from dshtray.ini (next to exe) or auto-detected ----
     static string NodePath;
     static string DshEntry;
@@ -87,7 +105,7 @@ static class Program
                     case "chrome": ChromePath = val; break;
                     case "url":
                         WebUrl = val;
-                        try { Port = new Uri(val).Port; } catch { }
+                        try { Port = new Uri(val).Port; } catch (Exception ex) { Log("ini url parse failed: " + ex.Message); }
                         break;
                     case "port":
                         int p;
@@ -103,7 +121,7 @@ static class Program
                 }
             }
         }
-        catch { }
+        catch (Exception ex) { Log("LoadIniConfig failed: " + ex.Message); }
     }
 
     static string FindOnPath(string exe)
@@ -120,7 +138,7 @@ static class Program
                 if (Path.IsPathRooted(candidate) && File.Exists(candidate)) return candidate;
             }
         }
-        catch { }
+        catch (Exception ex) { Log("FindOnPath failed: " + ex.Message); }
         return null;
     }
 
@@ -160,7 +178,7 @@ static class Program
             using (var p = Process.Start(psi))
             {
                 string root = p.StandardOutput.ReadToEnd().Trim();
-                p.WaitForExit(3000);
+                p.WaitForExit(ProcessWaitExitMs);
                 if (root.Length > 0 && Directory.Exists(root))
                 {
                     string entry3 = Path.Combine(root, "@deepseek-ai", "dsh", "lib", "bin.js");
@@ -168,7 +186,7 @@ static class Program
                 }
             }
         }
-        catch { }
+        catch (Exception ex) { Log("DetectDshEntry npm root -g failed: " + ex.Message); }
         return null;
     }
 
@@ -203,7 +221,13 @@ static class Program
     static int lastAutoRestartTick;
     static bool menuShowing;
     static Form menuOwner;
+    // all tick-delay checks below use Environment.TickCount (int). The elapsed-time
+    // expressions are plain `int - int` in C#'s default unchecked context, so a 24.8-day
+    // TickCount wraparound stays well-defined (mod 2^32) and never yields a spuriously
+    // negative elapsed value. .NET Framework 4.8 has no Environment.TickCount64, so we
+    // keep TickCount and rely on this wraparound-safe int subtraction.
     static int lastLeftClickTick = -1000;
+    static string lastDshUpWarn;
 
     // ---- integrity (elevation) helpers ----
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -270,7 +294,7 @@ static class Program
             if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, 4) != 0)
                 DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref useDark, 4);
         }
-        catch { }
+        catch (Exception ex) { Log("ApplyMenuTheme failed: " + ex.Message); }
     }
 
     // ---- process-wide menu theme (uxtheme ordinals, same as Chromium/Firefox) ----
@@ -291,7 +315,7 @@ static class Program
             SetPreferredAppMode(darkMode ? PAM_ALLOW_DARK : PAM_DEFAULT);
             FlushMenuThemes();
         }
-        catch { }
+        catch (Exception ex) { Log("ApplyAppTheme failed: " + ex.Message); }
     }
 
     const byte VK_CONTROL = 0x11;
@@ -304,31 +328,50 @@ static class Program
     [STAThread]
     static void Main()
     {
-        InitLog();
-        InitConfig();
-        selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
-        autoRestartEnabled = LoadAutoRestart();
-
         string[] args = Environment.GetCommandLineArgs();
+
+        // headless helper modes are dispatched before the single-instance mutex: the
+        // --elevated-kill helper is a separate process spawned by a live instance (that holds
+        // the mutex), so gating it would make it exit and the elevated kill would never run.
         if (args.Length > 1)
         {
-            if (args[1] == "--smoke") { RunSmoke(); return; }
-            if (args[1] == "--find-window") { RunFindWindow(); return; }
-            if (args[1] == "--menu-test") { RunMenuTest(); return; }
+            // elevated kill helper: only needs logging + our own integrity level
             if (args[1] == "--elevated-kill" && args.Length > 2)
             {
+                InitLog();
+                selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
                 int pid;
                 if (int.TryParse(args[2], out pid)) RunElevatedKillDirect(pid);
                 return;
             }
+
+            // diagnostic one-shot modes: need full config detection, still early-return
+            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test")
+            {
+                InitLog();
+                InitConfig();
+                selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
+                autoRestartEnabled = LoadAutoRestart();
+                if (args[1] == "--smoke") { RunSmoke(); return; }
+                if (args[1] == "--find-window") { RunFindWindow(); return; }
+                if (args[1] == "--menu-test") { RunMenuTest(); return; }
+            }
         }
 
+        // single-instance guard: reject a second (no-arg) instance before doing any
+        // initialization, so it performs no config detection / logging / registry reads
         bool createdNew;
         mutex = new Mutex(false, "dsh-tray_SingleInstance", out createdNew);
         bool acquired;
         try { acquired = mutex.WaitOne(0, false); }
         catch (AbandonedMutexException) { acquired = true; } // previous instance crashed; take over
         if (!acquired) return; // another live instance
+
+        // only the single primary instance reaches here
+        InitLog();
+        InitConfig();
+        selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
+        autoRestartEnabled = LoadAutoRestart();
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -354,7 +397,7 @@ static class Program
         UpdateStatus();
 
         pollTimer = new System.Windows.Forms.Timer();
-        pollTimer.Interval = 3000;
+        pollTimer.Interval = PollIntervalMs;
         pollTimer.Tick += delegate { PollTick(); };
         pollTimer.Start();
 
@@ -364,6 +407,8 @@ static class Program
         if (whiteIcon != null) whiteIcon.Dispose();
         if (blueIcon != null) blueIcon.Dispose();
         if (darkIcon != null) darkIcon.Dispose();
+        DisposeDshProc();
+        dshProc = null;
         if (mutex != null) mutex.ReleaseMutex();
     }
 
@@ -372,7 +417,7 @@ static class Program
         logPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "dsh-tray", "tray.log");
-        try { Directory.CreateDirectory(Path.GetDirectoryName(logPath)); } catch { }
+        try { Directory.CreateDirectory(Path.GetDirectoryName(logPath)); } catch (Exception ex) { Log("InitLog mkdir failed: " + ex.Message); }
         // one-time migration from the old log directory name
         try
         {
@@ -388,7 +433,7 @@ static class Program
                 if (File.Exists(oldHarness) && !File.Exists(newHarness)) File.Copy(oldHarness, newHarness);
             }
         }
-        catch { }
+        catch (Exception ex) { Log("InitLog migration failed: " + ex.Message); }
     }
 
     static void PollTick()
@@ -402,8 +447,8 @@ static class Program
         }
         UpdateStatus();
         if (autoRestartEnabled && !userStopped && !IsDshUp() &&
-            Environment.TickCount - lastStartTick > 10000 &&
-            Environment.TickCount - lastAutoRestartTick > 30000)
+            Environment.TickCount - lastStartTick > AutoRestartStartCooldownMs &&
+            Environment.TickCount - lastAutoRestartTick > AutoRestartRetryCooldownMs)
         {
             lastAutoRestartTick = Environment.TickCount;
             Log("AutoRestart: harness is down, restarting");
@@ -432,7 +477,7 @@ static class Program
         sb.AppendLine("pid on port=" + p3080);
         if (p3080 > 0) sb.AppendLine("pid integrity=" + GetIntegrity(p3080));
         sb.AppendLine("SMOKE OK");
-        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch { }
+        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Log("RunSmoke write report failed: " + ex.Message); }
     }
 
     // ---- headless: list Chrome top-level windows (read-only) ----
@@ -454,11 +499,11 @@ static class Program
                     sb.AppendLine("hwnd=" + hWnd + " pid=" + pid + " title=[" + t.ToString() + "]");
                 }
             }
-            catch { }
+            catch (Exception ex) { Log("RunFindWindow GetProcessById failed: " + ex.Message); }
             return true;
         }, IntPtr.Zero);
         string report = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "find-window-result.txt");
-        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch { }
+        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Log("RunFindWindow write failed: " + ex.Message); }
     }
 
     // ---- headless: build the native menu without showing it ----
@@ -489,7 +534,7 @@ static class Program
         }
         catch (Exception ex)
         {
-            try { File.WriteAllText(Path.Combine(dir, "menu-test.txt"), "menu-test FAIL: " + ex.Message, Encoding.UTF8); } catch { }
+            try { File.WriteAllText(Path.Combine(dir, "menu-test.txt"), "menu-test FAIL: " + ex.Message, Encoding.UTF8); } catch (Exception ex2) { Log("RunMenuTest write failed: " + ex2.Message); }
         }
     }
 
@@ -499,7 +544,7 @@ static class Program
         Log("=== elevated kill start: pid=" + pid + " myIntegrity=" + selfIntegrity + " ===");
         Taskkill(pid);
         TryProcessKill(pid);
-        Thread.Sleep(300);
+        Thread.Sleep(KillSleepMs);
         Log("elevated kill: pid=" + pid + " alive=" + IsAlive(pid));
     }
 
@@ -508,7 +553,7 @@ static class Program
         tray = new NotifyIcon();
         tray.Text = Lang.T("tray.title");
         tray.Visible = true;
-        try { whiteIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        try { whiteIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception ex) { Log("BuildTray extract icon failed: " + ex.Message); }
         blueIcon = BuildIconFromResource("whale-blue.png");
         darkIcon = BuildIconFromResource("whale-dark.png");
         tray.Icon = whiteIcon != null ? whiteIcon : SystemIcons.Application;
@@ -517,10 +562,10 @@ static class Program
             if (e.Button == MouseButtons.Right) { ShowTrayMenu(); return; }
             if (e.Button == MouseButtons.Left)
             {
-                // single-click action only: swallow a second click within 300 ms
+                // single-click action only: swallow a second click within the dedupe window
                 // so an accidental double-click never opens two windows
                 int now = Environment.TickCount;
-                if (now - lastLeftClickTick < 300) { lastLeftClickTick = now; return; }
+                if (now - lastLeftClickTick < DoubleClickSwallowMs) { lastLeftClickTick = now; return; }
                 lastLeftClickTick = now;
                 StartAndOpen();
             }
@@ -534,7 +579,7 @@ static class Program
         {
             userStopped = false;
             StartDsh();
-            WaitForPortUp(30000);
+            WaitForPortUp(PortWaitMs);
             UpdateStatus();
         }
         OpenWindow();
@@ -674,7 +719,7 @@ static class Program
         StopDsh();
         UpdateStatus();   // harness is down now -> show stopped (white) icon
         StartDsh();
-        WaitForPortUp(30000);
+        WaitForPortUp(PortWaitMs);
         ReloadAppWindow();
         UpdateStatus();   // harness is up -> show running (blue) icon
     }
@@ -701,12 +746,24 @@ static class Program
                 CreateNoWindow = true
             };
             Process proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            proc.Exited += delegate { Log("dsh process exited pid=" + proc.Id); };
+            proc.Exited += dshProcExited;
             proc.Start();
             dshProc = proc;
             Log("StartDsh: launched pid=" + dshProc.Id + " (log=" + dshLog + ")");
         }
         catch (Exception ex) { Log("StartDsh failed: " + ex.Message); }
+    }
+
+    // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
+    // because dshProc may already reference a newer process by the time this fires
+    static void dshProcExited(object sender, EventArgs e)
+    {
+        try
+        {
+            var p = sender as Process;
+            Log("dsh process exited pid=" + (p != null ? p.Id : -1));
+        }
+        catch { }
     }
 
     static void StopDsh()
@@ -716,8 +773,9 @@ static class Program
         {
             Log("StopDsh: killing owned pid=" + dshProc.Id);
             KillTree(dshProc.Id);
-            try { dshProc.WaitForExit(3000); } catch { }
+            try { dshProc.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Log("StopDsh WaitForExit failed: " + ex.Message); }
         }
+        DisposeDshProc();
         dshProc = null;
 
         if (PortOpen(Port))
@@ -725,12 +783,31 @@ static class Program
             int pid = FindPidOnPort(Port);
             if (pid > 0)
             {
-                Log("StopDsh: killing external pid=" + pid);
-                KillTree(pid);
+                // only kill the port owner if it is actually node.exe; refusing to kill an
+                // unrelated process that happens to hold our port avoids an identity mix-up
+                if (IsNodeProcess(pid))
+                {
+                    Log("StopDsh: killing external pid=" + pid);
+                    KillTree(pid);
+                }
+                else
+                {
+                    Log("StopDsh: pid=" + pid + " on port " + Port + " is not node, refusing to kill");
+                }
             }
         }
-        WaitForPortFree(8000);
+        WaitForPortFree(PortFreeWaitMs);
         Log("StopDsh: done, port open=" + PortOpen(Port));
+    }
+
+    // detach the Exited handler then dispose the process object; safe to call when null
+    static void DisposeDshProc()
+    {
+        if (dshProc != null)
+        {
+            try { dshProc.Exited -= dshProcExited; } catch { }
+            try { dshProc.Dispose(); } catch { }
+        }
     }
 
     // kill a pid + its tree; elevate if the target runs at higher integrity
@@ -750,7 +827,7 @@ static class Program
         Taskkill(pid);
         TryProcessKill(pid);
 
-        Thread.Sleep(300);
+        Thread.Sleep(KillSleepMs);
         if (IsAlive(pid))
         {
             Log("KillTree: pid=" + pid + " still alive after normal kill, elevating");
@@ -770,7 +847,7 @@ static class Program
                 Verb = "runas"
             };
             var p = Process.Start(psi);
-            if (p != null) { p.WaitForExit(30000); Log("elevated kill helper: exit=" + p.ExitCode); }
+            if (p != null) { p.WaitForExit(ElevatedKillWaitMs); Log("elevated kill helper: exit=" + p.ExitCode); }
             else Log("elevated kill helper: Process.Start returned null");
         }
         catch (Exception ex)
@@ -796,7 +873,7 @@ static class Program
             {
                 string outp = p.StandardOutput.ReadToEnd();
                 string err = p.StandardError.ReadToEnd();
-                p.WaitForExit(8000);
+                p.WaitForExit(TaskkillWaitMs);
                 string msg = "taskkill pid=" + pid + " exit=" + p.ExitCode +
                     " out=" + outp.Trim() + " err=" + err.Trim();
                 Log(msg);
@@ -815,9 +892,11 @@ static class Program
     {
         try
         {
-            var p = Process.GetProcessById(pid);
-            p.Kill();
-            p.WaitForExit(3000);
+            using (var p = Process.GetProcessById(pid))
+            {
+                p.Kill();
+                p.WaitForExit(ProcessWaitExitMs);
+            }
             Log("Process.Kill pid=" + pid + " ok");
             return true;
         }
@@ -832,8 +911,10 @@ static class Program
     {
         try
         {
-            var p = Process.GetProcessById(pid);
-            return !p.HasExited;
+            using (var p = Process.GetProcessById(pid))
+            {
+                return !p.HasExited;
+            }
         }
         catch { return false; }
     }
@@ -843,8 +924,8 @@ static class Program
         int waited = 0;
         while (PortOpen(Port) && waited < timeoutMs)
         {
-            Thread.Sleep(200);
-            waited += 200;
+            Thread.Sleep(PortPollStepMs);
+            waited += PortPollStepMs;
         }
         if (waited >= timeoutMs && PortOpen(Port)) Log("WaitForPortFree: timed out, port still open");
     }
@@ -854,8 +935,8 @@ static class Program
         int waited = 0;
         while (!PortOpen(Port) && waited < timeoutMs)
         {
-            Thread.Sleep(200);
-            waited += 200;
+            Thread.Sleep(PortPollStepMs);
+            waited += PortPollStepMs;
         }
         Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(Port));
     }
@@ -883,7 +964,7 @@ static class Program
                             targets.Add(hWnd);
                     }
                 }
-                catch { }
+                catch (Exception ex) { Log("ReloadAppWindow GetProcessById failed: " + ex.Message); }
                 return true;
             }, IntPtr.Zero);
 
@@ -915,10 +996,40 @@ static class Program
         catch (Exception ex) { Log("ReloadAppWindow failed: " + ex.Message); }
     }
 
+    // Is the process owning `pid` a node.exe? Used to verify a port listener is really our harness.
+    static bool IsNodeProcess(int pid)
+    {
+        try
+        {
+            using (var p = Process.GetProcessById(pid))
+            {
+                return string.Equals(p.ProcessName, "node", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        catch { return false; }
+    }
+
     static bool IsDshUp()
     {
-        if (dshProc != null && !dshProc.HasExited) return true;
-        return PortOpen(Port);
+        if (dshProc != null && !dshProc.HasExited) { lastDshUpWarn = null; return true; }
+        if (!PortOpen(Port)) { lastDshUpWarn = null; return false; }
+        // port is open but we don't own the listener: only treat it as "up" if the owner is node
+        int pid = FindPidOnPort(Port);
+        if (pid <= 0) { LogDshUpWarnOnce("port " + Port + " open but no listener pid found"); return false; }
+        if (!IsNodeProcess(pid)) { LogDshUpWarnOnce("port " + Port + " owned by non-node pid=" + pid + "; treating as down"); return false; }
+        lastDshUpWarn = null;
+        return true;
+    }
+
+    // IsDshUp runs from the 3-second poll: log each distinct warning only once per
+    // episode (until the verdict turns healthy again) so the log is not flooded
+    static void LogDshUpWarnOnce(string msg)
+    {
+        if (msg != lastDshUpWarn)
+        {
+            lastDshUpWarn = msg;
+            Log("IsDshUp: " + msg);
+        }
     }
 
     static bool PortOpen(int port)
@@ -928,13 +1039,22 @@ static class Program
             try
             {
                 var ar = c.BeginConnect("127.0.0.1", port, null, null);
-                bool ok = ar.AsyncWaitHandle.WaitOne(300, false);
+                bool ok = ar.AsyncWaitHandle.WaitOne(PortProbeTimeoutMs, false);
                 if (!ok) return false;
                 c.EndConnect(ar);
                 return true;
             }
             catch { return false; }
         }
+    }
+
+    // Is the netstat local-address HOST (port suffix already stripped) a loopback/any
+    // listener? Only these can be ours; anything else (e.g. the remote address on an
+    // ESTABLISHED line) is never a local port owner.
+    static bool IsLocalListenAddress(string localAddr)
+    {
+        return localAddr == "127.0.0.1" || localAddr == "0.0.0.0" ||
+               localAddr == "[::1]" || localAddr == "[::]";
     }
 
     static int FindPidOnPort(int port)
@@ -952,18 +1072,24 @@ static class Program
             using (var p = Process.Start(psi))
             {
                 string output = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(5000);
+                p.WaitForExit(NetstatWaitMs);
                 string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string line in lines)
                 {
+                    // only LISTENING lines carry a local listener; skip ESTABLISHED/other states
                     if (line.IndexOf("LISTENING", StringComparison.Ordinal) < 0) continue;
-                    if (line.IndexOf(":" + port + " ", StringComparison.Ordinal) < 0) continue;
                     string[] cols = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (cols.Length >= 5)
-                    {
-                        int pid;
-                        if (int.TryParse(cols[cols.Length - 1], out pid)) return pid;
-                    }
+                    // expected netstat -ano tcp columns: Proto LocalAddress ForeignAddress State PID
+                    if (cols.Length < 5) continue;
+                    string localAddr = cols[1]; // local address column, e.g. "127.0.0.1:3080" or "[::1]:3080"
+                    string portSuffix = ":" + port;
+                    // require the local address to END with ":port" and be a loopback/any address,
+                    // so a remote "1.2.3.4:3080" (ESTABLISHED) or an unrelated local IP is never matched
+                    if (!localAddr.EndsWith(portSuffix, StringComparison.Ordinal)) continue;
+                    string addrHost = localAddr.Substring(0, localAddr.Length - portSuffix.Length);
+                    if (!IsLocalListenAddress(addrHost)) continue;
+                    int pid;
+                    if (int.TryParse(cols[cols.Length - 1], out pid)) return pid;
                 }
             }
         }
@@ -1174,7 +1300,7 @@ static class Program
                 try
                 {
                     FileInfo fi = new FileInfo(logPath);
-                    if (fi.Exists && fi.Length > 5 * 1024 * 1024)
+                    if (fi.Exists && fi.Length > LogMaxBytes)
                     {
                         try { File.Copy(logPath, logPath + ".old", true); } catch { }
                         File.WriteAllText(logPath, "", Encoding.UTF8);
