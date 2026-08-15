@@ -1,33 +1,34 @@
 ; ==================== dsh-tray 配置文件模板 ====================
-; 本文件可选:全部键留空(全部注释掉)= 全自动检测。
-; 修改后保存,下次启动托盘生效。
+; url 为必写项(端口由 url 推导,默认 3080,改端口直接改这里)。
+; 其余键注释掉 = 未配置 = 自动检测;取消注释并填写后按所写值生效。
+; 修改保存后,下次启动托盘生效。
 ;
-; This file is optional: leave every key empty (all commented out)
-; for full auto-detection. Changes take effect on the next start.
+; url is required (the port is derived from it, default 3080 — change it
+; to use a custom port). Every other key, when commented out, is
+; auto-detected; uncomment and fill it in to override. Changes take
+; effect the next time the tray starts.
 ; ==========================================================
 
-; Node.js 可执行文件路径(留空自动检测)
-; Path to node.exe (empty = auto-detect)
-;node=
+; Harness 网页地址(必写)
+; Harness web URL (required; port is derived from it, default 3080)
+url=http://127.0.0.1:3080
 
-; dsh 入口脚本路径(留空自动检测)
-; Path to the dsh entry script (empty = auto-detect)
-;dshentry=
+; Node.js 可执行文件路径(注释=自动检测)
+; Path to node.exe (commented = auto-detect)
+;node=C:\Program Files\nodejs\node.exe
 
-; dsh 工作目录(留空自动推断)
-; Working directory for dsh (empty = infer)
-;dshworkdir=
+; dsh 入口脚本路径(注释=自动检测)
+; Path to the dsh entry script (commented = auto-detect)
+;dshentry=C:\Program Files\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js
 
-; Chromium 系浏览器可执行文件(留空自动查找 Chrome / Edge)
-; Chromium-family browser exe (empty = auto-detect Chrome / Edge)
-;chrome=
+; dsh 工作目录(注释=自动推断)
+; Working directory for dsh (commented = inferred)
+;dshworkdir=C:\Program Files\nodejs\node_modules
 
-; Harness 网页地址。端口由 url 自动推导(默认 3080),无需单独配置端口;
-; 若需自定义端口,直接把 url 改成对应端口即可。
-; Harness web URL. The port is derived from the URL (default 3080),
-; so there is no separate port key; to use a custom port, just change the URL.
-;url=
+; Chromium 系浏览器可执行文件(注释=自动查找 Chrome/Edge)
+; Chromium-family browser exe (commented = auto-detect Chrome/Edge)
+;chrome=C:\Program Files\Google\Chrome\Application\chrome.exe
 
-; 界面语言:zh / en(留空跟随系统)
-; UI language: zh / en (empty = follow the system)
-;lang=
+; 界面语言:zh / en(注释=跟随系统)
+; UI language: zh / en (commented = follow the system)
+;lang=zh

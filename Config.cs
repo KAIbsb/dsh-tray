@@ -56,19 +56,15 @@ static class Config
         if (!Current.BrowserNames.Contains("msedge")) Current.BrowserNames.Add("msedge");
     }
 
-    // optional dshtray.ini next to the exe; keys: node, dshentry, dshworkdir, chrome, url, port
-    //
-    // url / port precedence is ORDER-INDEPENDENT: an explicit url wins (its port is derived
-    // from the url); only when url is absent does a `port` key take effect (and it derives the
-    // WebUrl). So if both are set, url decides and port is ignored regardless of line order.
+    // optional dshtray.ini next to the exe; keys: node, dshentry, dshworkdir, chrome, url, lang.
+    // url is the only explicit port setting: the port is derived from it (default 3080). Any
+    // legacy `port=` line is ignored by the switch below (no compat needed).
     static void LoadIniConfig()
     {
         try
         {
             string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
             if (!File.Exists(ini)) return;
-            bool urlWasSet = false;
-            bool portWasSet = false;
             foreach (string raw in File.ReadAllLines(ini))
             {
                 string line = raw.Trim();
@@ -85,27 +81,12 @@ static class Config
                     case "chrome": Current.ChromePath = val; break;
                     case "url":
                         Current.WebUrl = val;
-                        urlWasSet = true;
                         try { Current.Port = new Uri(val).Port; } catch (Exception ex) { Logging.Log("ini url parse failed: " + ex.Message); }
-                        break;
-                    case "port":
-                        int p;
-                        if (int.TryParse(val, out p) && p > 0)
-                        {
-                            Current.Port = p;
-                            portWasSet = true;
-                            // no inline WebUrl rewrite here: resolved after the loop so url wins
-                        }
                         break;
                     case "lang":
                         Current.IniLang = val;
                         break;
                 }
-            }
-            // resolve url/port: url has precedence; port only derives WebUrl when url was absent
-            if (portWasSet && !urlWasSet)
-            {
-                Current.WebUrl = "http://127.0.0.1:" + Current.Port;
             }
         }
         catch (Exception ex) { Logging.Log("LoadIniConfig failed: " + ex.Message); }

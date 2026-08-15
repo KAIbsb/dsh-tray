@@ -86,16 +86,16 @@ Exit            ← exits the tray only; the harness keeps running (use Stop to 
 
 ## Configuration
 
-No configuration is needed — node, dsh and the browser are auto-detected. For special environments, create a `dshtray.ini` next to the exe to override (all keys optional):
+No configuration is needed — node, dsh and the browser are auto-detected. For special environments, create a `dshtray.ini` next to the exe to override (only `url` is required; every other key is optional):
 
 ```ini
 # dshtray.ini (optional)
-node = C:\path\to\node.exe
-dshentry = C:\path\to\dsh\lib\bin.js
-dshworkdir = C:\path\to\dsh
-chrome = C:\path\to\chrome.exe
-url = http://127.0.0.1:3080   # port is derived from the URL; set a custom port here
-lang = en                    # UI language zh/en; defaults to the system UI language
+url = http://127.0.0.1:3080   # required; port derived from the URL (change it for a custom port)
+;node = C:\path\to\node.exe       # commented = auto-detect
+;dshentry = C:\path\to\dsh\lib\bin.js
+;dshworkdir = C:\path\to\dsh
+;chrome = C:\path\to\chrome.exe
+;lang = en                        # UI language zh/en; commented = follow system
 ```
 
 Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory). Chrome and Edge are auto-detected; for other Chromium-based browsers (Brave / Opera / Vivaldi etc.) point the `chrome` key at their exe. `url` is the only port setting (the port is derived from it); there is no separate `port` key.

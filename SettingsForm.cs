@@ -52,7 +52,7 @@ class SettingsForm : Form
         MaximizeBox = false;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(480, 366);
+        ClientSize = new Size(560, 366);
         AutoScaleMode = AutoScaleMode.Dpi;
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
@@ -66,7 +66,7 @@ class SettingsForm : Form
         // ---- section 1: general (bold heading + separator line) ----
         lblSecGeneral = new Label { Left = 16, Top = 12, AutoSize = true };
         lblSecGeneral.Font = new Font(lblSecGeneral.Font, FontStyle.Bold);
-        lineGeneral = new Panel { Left = 16, Top = 34, Width = 448, Height = 1 };
+        lineGeneral = new Panel { Left = 16, Top = 34, Width = 528, Height = 1 };
         lblLanguage = new Label { Left = 16, Top = 44, Width = 90, Height = 22 };
         lblLanguage.AutoSize = false;
         lblLanguage.TextAlign = ContentAlignment.MiddleLeft;
@@ -86,26 +86,26 @@ class SettingsForm : Form
         // ---- section 2: about / updates ----
         lblSecAbout = new Label { Left = 16, Top = 152, AutoSize = true };
         lblSecAbout.Font = new Font(lblSecAbout.Font, FontStyle.Bold);
-        lineAbout = new Panel { Left = 16, Top = 174, Width = 448, Height = 1 };
-        lblVersion = new Label { Left = 16, Top = 184, Width = 416, Height = 20 };
+        lineAbout = new Panel { Left = 16, Top = 174, Width = 528, Height = 1 };
+        lblVersion = new Label { Left = 16, Top = 184, Width = 528, Height = 20 };
         lblVersion.AutoSize = false;
         lblVersion.TextAlign = ContentAlignment.MiddleLeft;
-        lnkRepo = new LinkLabel { Left = 16, Top = 212, Width = 416, Height = 20 };
+        lnkRepo = new LinkLabel { Left = 16, Top = 212, Width = 528, Height = 20 };
         lnkRepo.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnCheck = new Button { Left = 16, Top = 240, Width = 110, Height = 28 };
+        btnCheck = new Button { Left = 16, Top = 240, Width = 150, Height = 28 };
         btnCheck.Click += delegate { OnCheckUpdate(); };
-        lblResult = new Label { Left = 138, Top = 244, Width = 200, Height = 22 };
+        lblResult = new Label { Left = 174, Top = 244, Width = 260, Height = 22 };
         lblResult.AutoSize = false;
         lblResult.TextAlign = ContentAlignment.MiddleLeft;
-        lnkDownload = new LinkLabel { Left = 342, Top = 243, AutoSize = true, Visible = false };
+        lnkDownload = new LinkLabel { Left = 410, Top = 243, AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnOpenConfig = new Button { Left = 16, Top = 272, Width = 200, Height = 28 };
+        btnOpenConfig = new Button { Left = 16, Top = 272, Width = 220, Height = 28 };
         btnOpenConfig.Click += delegate { OpenConfig(); };
-        btnOpenLogs = new Button { Left = 232, Top = 272, Width = 200, Height = 28 };
+        btnOpenLogs = new Button { Left = 248, Top = 272, Width = 220, Height = 28 };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
 
         // ---- close button (bottom-right) ----
-        btnClose = new Button { Left = 374, Top = 318, Width = 90, Height = 30 };
+        btnClose = new Button { Left = 454, Top = 318, Width = 90, Height = 30 };
         btnClose.Click += delegate { Close(); };
 
         Controls.Add(lblSecGeneral);
