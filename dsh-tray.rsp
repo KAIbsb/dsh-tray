@@ -14,6 +14,7 @@ Program.cs
 Lang.cs
 Win32.cs
 Logging.cs
+IniFile.cs
 Config.cs
 DshProcess.cs
 WindowMgr.cs

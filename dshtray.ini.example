@@ -1,34 +1,29 @@
-; ==================== dsh-tray 配置文件模板 ====================
-; url 为必写项(端口由 url 推导,默认 3080,改端口直接改这里)。
-; 其余键注释掉 = 未配置 = 自动检测;取消注释并填写后按所写值生效。
-; 修改保存后,下次启动托盘生效。
-;
-; url is required (the port is derived from it, default 3080 — change it
-; to use a custom port). Every other key, when commented out, is
-; auto-detected; uncomment and fill it in to override. Changes take
-; effect the next time the tray starts.
+; ==================== dsh-tray 配置文件 ====================
+; 本文件是托盘的唯一配置。修改保存后,下次启动托盘生效。
+; 删除或注释某行 = 该项使用默认值/自动检测。
+; This file is the tray's single configuration. Changes apply on the next start.
+; Delete or comment a line to use the default / auto-detection for that item.
 ; ==========================================================
 
-; Harness 网页地址(必写)
-; Harness web URL (required; port is derived from it, default 3080)
+; Harness 网页地址(必写;端口由 url 推导,默认 3080)
+; Harness web URL (required; the port is derived from it, default 3080)
 url=http://127.0.0.1:3080
 
-; Node.js 可执行文件路径(注释=自动检测)
-; Path to node.exe (commented = auto-detect)
-;node=C:\Program Files\nodejs\node.exe
+; 界面语言:zh / en(留空 = 跟随系统)
+; UI language: zh / en (empty = follow the system)
+lang=
 
-; dsh 入口脚本路径(注释=自动检测)
-; Path to the dsh entry script (commented = auto-detect)
-;dshentry=C:\Program Files\nodejs\node_modules\@deepseek-ai\dsh\lib\bin.js
+; 崩溃自动重启:true / false
+; Auto-restart on crash: true / false
+autorestart=true
 
-; dsh 工作目录(注释=自动推断)
-; Working directory for dsh (commented = inferred)
-;dshworkdir=C:\Program Files\nodejs\node_modules
+; 开机自启:true / false(同时写入 Windows 启动项)
+; Start with Windows: true / false (also written to the Windows startup)
+autostart=false
 
-; Chromium 系浏览器可执行文件(注释=自动查找 Chrome/Edge)
-; Chromium-family browser exe (commented = auto-detect Chrome/Edge)
-;chrome=C:\Program Files\Google\Chrome\Application\chrome.exe
-
-; 界面语言:zh / en(注释=跟随系统)
-; UI language: zh / en (commented = follow the system)
-;lang=zh
+; 以下留空或删除 = 自动检测
+; Empty or remove a line below to auto-detect:
+;node=
+;dshentry=
+;dshworkdir=
+;chrome=

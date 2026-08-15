@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -301,16 +300,8 @@ class SettingsForm : Form
     {
         try
         {
-            string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
-            // create the config from the embedded commented template when it is missing or
-            // empty, so the user always sees what can be configured
-            if (!File.Exists(ini) || new FileInfo(ini).Length == 0)
-            {
-                string template = null;
-                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("dshtray.ini.example"))
-                    if (s != null) using (var r = new StreamReader(s)) template = r.ReadToEnd();
-                File.WriteAllText(ini, template ?? "", Encoding.UTF8);
-            }
+            string ini = Config.IniPath;
+            Config.EnsureIni();
             Process.Start(new ProcessStartInfo { FileName = Path.Combine(Environment.SystemDirectory, "notepad.exe"), Arguments = "\"" + ini + "\"", UseShellExecute = false });
         }
         catch (Exception ex) { Logging.Log("SettingsForm open config failed: " + ex.Message); }

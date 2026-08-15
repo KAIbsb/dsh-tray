@@ -87,19 +87,23 @@ harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标�
 
 ## 配置
 
-无需任何配置即可运行 —— node、dsh、浏览器会自动探测。特殊环境可在 exe 同目录建 `dshtray.ini` 覆盖(仅 `url` 为必写项,其余键均可省略):
+`dshtray.ini` 是托盘的唯一配置文件。首次运行会自动在 exe 同目录生成(带注释模板),设置窗口(菜单「设置…」)的所有开关/选项也直接改这个文件。修改保存后,下次启动托盘生效。
 
 ```ini
-# dshtray.ini(可选)
+# dshtray.ini
 url = http://127.0.0.1:3080   # 必写;端口由 url 推导,改端口直接改这里
-;node = C:\path\to\node.exe       # 注释 = 自动检测
+lang = zh                    # 界面语言 zh/en,留空 = 跟随系统
+autorestart = true           # 崩溃自动重启 true/false
+autostart = false            # 开机自启 true/false(同时写入 Windows 启动项)
+
+# 以下留空或删除 = 自动检测
+;node = C:\path\to\node.exe
 ;dshentry = C:\path\to\dsh\lib\bin.js
 ;dshworkdir = C:\path\to\dsh
 ;chrome = C:\path\to\chrome.exe
-;lang = zh                        # 界面语言 zh/en,注释 = 跟随系统
 ```
 
-优先级:ini 显式值 > 自动探测(PATH / 常见安装路径 / npm 全局目录)。Chrome / Edge 自动探测;其他 Chromium 系浏览器(Brave / Opera / Vivaldi 等)用 `chrome =` 指定即可。`url` 是唯一的端口配置项(端口由其自动推导),不再提供单独的 `port` 键。
+删除或注释某行 = 该项使用默认值 / 自动检测(Node/Dsh 入口/浏览器走 PATH、常见安装路径、npm 全局目录)。`url` 是唯一的端口配置项(端口由其自动推导)。`autostart` 是开机自启的唯一来源,Windows 启动项只是它的镜像(启动时按文件同步)。
 
 ## 日志
 

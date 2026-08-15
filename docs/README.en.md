@@ -86,19 +86,23 @@ Exit            ← exits the tray only; the harness keeps running (use Stop to 
 
 ## Configuration
 
-No configuration is needed — node, dsh and the browser are auto-detected. For special environments, create a `dshtray.ini` next to the exe to override (only `url` is required; every other key is optional):
+`dshtray.ini` is the tray's single configuration file. It is auto-generated next to the exe on first run (with a commented template), and every toggle in the settings window ("Settings…") writes this same file. Changes apply on the next start.
 
 ```ini
-# dshtray.ini (optional)
+# dshtray.ini
 url = http://127.0.0.1:3080   # required; port derived from the URL (change it for a custom port)
-;node = C:\path\to\node.exe       # commented = auto-detect
+lang = zh                    # UI language zh/en; empty = follow system
+autorestart = true           # auto-restart on crash: true/false
+autostart = false            # start with Windows: true/false (also written to the startup key)
+
+# empty or remove a line below = auto-detect
+;node = C:\path\to\node.exe
 ;dshentry = C:\path\to\dsh\lib\bin.js
 ;dshworkdir = C:\path\to\dsh
 ;chrome = C:\path\to\chrome.exe
-;lang = en                        # UI language zh/en; commented = follow system
 ```
 
-Precedence: explicit ini values > auto-detection (PATH / common install locations / npm global directory). Chrome and Edge are auto-detected; for other Chromium-based browsers (Brave / Opera / Vivaldi etc.) point the `chrome` key at their exe. `url` is the only port setting (the port is derived from it); there is no separate `port` key.
+Delete or comment a line to use the default / auto-detection for that item (node / dsh entry / browser resolve via PATH, common install paths, npm global directory). `url` is the only port setting (the port is derived from it). `autostart` is the single source for start-with-Windows; the Windows startup key is only a mirror (synced from the file at startup).
 
 ## Logs
 

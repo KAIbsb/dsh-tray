@@ -21,15 +21,23 @@ class AppConfig
     public List<string> BrowserNames = new List<string>();
 }
 
-// Configuration: ini parsing, path detection, registry persistence. Leaf layer (depends on
-// Lang and Logging only, both leaves). Never depends on Program.
+// Configuration: dshtray.ini is the single source of truth (parsed via IniFile). Auto-detection
+// fills any key left empty/unset. Depends on Lang / Logging / IniFile (all leaves). Never depends
+// on Program. The Windows startup registry key is only a mirror of the `autostart` ini key.
 static class Config
 {
     public static readonly AppConfig Current = new AppConfig();
 
+    public static string IniPath
+    {
+        get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini"); }
+    }
+
     public static void InitConfig()
     {
+        EnsureIni();
         LoadIniConfig();
+        SyncAutostartFromIni();
         Lang.Init(Current.IniLang);
         Logging.Log("UI language: " + Lang.Code);
         if (string.IsNullOrEmpty(Current.NodePath) || !File.Exists(Current.NodePath)) Current.NodePath = DetectNode();
@@ -42,6 +50,21 @@ static class Config
             " | dshEntry=" + (Current.DshEntry ?? "NOT FOUND") +
             " | chrome=" + (Current.ChromePath ?? "NOT FOUND") +
             " | url=" + Current.WebUrl);
+    }
+
+    // create the ini from the embedded template when missing; failure is logged and swallowed
+    public static void EnsureIni()
+    {
+        try
+        {
+            if (File.Exists(IniPath)) return;
+            string template = null;
+            using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("dshtray.ini.example"))
+                if (s != null) using (var r = new StreamReader(s)) template = r.ReadToEnd();
+            File.WriteAllText(IniPath, template ?? "", Encoding.UTF8);
+            Logging.Log("Config: created " + IniPath);
+        }
+        catch (Exception ex) { Logging.Log("EnsureIni failed: " + ex.Message); }
     }
 
     // process names whose windows we refresh on restart: the configured browser + chrome/msedge fallbacks
@@ -57,44 +80,33 @@ static class Config
         if (!Current.BrowserNames.Contains("msedge")) Current.BrowserNames.Add("msedge");
     }
 
-    // optional dshtray.ini next to the exe; keys: node, dshentry, dshworkdir, chrome, url, lang.
-    // url is the only explicit port setting: the port is derived from it (default 3080). Any
-    // legacy `port=` line is ignored by the switch below (no compat needed).
+    // dshtray.ini is the single config source. url is the only explicit port setting (the port
+    // is derived from it, default 3080). Unset keys fall through to auto-detection.
     static void LoadIniConfig()
     {
         try
         {
-            string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
-            if (!File.Exists(ini)) return;
-            foreach (string raw in File.ReadAllLines(ini))
+            var lines = IniFile.Load(IniPath);
+
+            string url = IniFile.Get(lines, "url");
+            if (!string.IsNullOrEmpty(url))
             {
-                string line = raw.Trim();
-                if (line.Length == 0 || line.StartsWith("#") || line.StartsWith(";")) continue;
-                int eq = line.IndexOf('=');
-                if (eq <= 0) continue;
-                string key = line.Substring(0, eq).Trim().ToLowerInvariant();
-                string val = line.Substring(eq + 1).Trim();
-                switch (key)
+                Current.WebUrl = url;
+                try { Current.Port = new Uri(url).Port; }
+                catch (Exception ex)
                 {
-                    case "node": Current.NodePath = val; break;
-                    case "dshentry": Current.DshEntry = val; break;
-                    case "dshworkdir": Current.DshWorkDir = val; break;
-                    case "chrome": Current.ChromePath = val; break;
-                    case "url":
-                        Current.WebUrl = val;
-                        try { Current.Port = new Uri(val).Port; }
-                        catch (Exception ex)
-                        {
-                            // roll back to the default so WebUrl and Port stay consistent
-                            Current.WebUrl = "http://127.0.0.1:3080";
-                            Logging.Log("ini url parse failed, using default: " + ex.Message);
-                        }
-                        break;
-                    case "lang":
-                        Current.IniLang = val;
-                        break;
+                    // roll back to the default so WebUrl and Port stay consistent
+                    Current.WebUrl = "http://127.0.0.1:3080";
+                    Logging.Log("ini url parse failed, using default: " + ex.Message);
                 }
             }
+
+            Current.IniLang = IniFile.Get(lines, "lang");
+
+            Current.NodePath = IniFile.Get(lines, "node");
+            Current.DshEntry = IniFile.Get(lines, "dshentry");
+            Current.DshWorkDir = IniFile.Get(lines, "dshworkdir");
+            Current.ChromePath = IniFile.Get(lines, "chrome");
         }
         catch (Exception ex) { Logging.Log("LoadIniConfig failed: " + ex.Message); }
     }
@@ -190,22 +202,114 @@ static class Config
         return null;
     }
 
+    // Parse a "true"/"false" string; null/empty/other -> null (caller decides fallback).
+    static bool? ParseBool(string s)
+    {
+        if (s == null) return null;
+        string t = s.Trim().ToLowerInvariant();
+        if (t == "true" || t == "1" || t == "yes" || t == "on") return true;
+        if (t == "false" || t == "0" || t == "no" || t == "off") return false;
+        return null;
+    }
+
+    // ---- auto-restart: ini is authoritative; registry is only a legacy migration source ----
+
+    public static bool LoadAutoRestart()
+    {
+        try
+        {
+            var lines = IniFile.Load(IniPath);
+            string v = IniFile.Get(lines, "autorestart");
+            if (v != null)
+            {
+                bool? b = ParseBool(v);
+                if (b != null) return b.Value;
+            }
+            // no (valid) ini value: migrate from the legacy registry key once
+            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\dsh-tray", false))
+            {
+                object rv = k != null ? k.GetValue("AutoRestart") : null;
+                if (rv != null)
+                {
+                    bool val = Convert.ToInt32(rv) == 1;
+                    IniFile.Set(lines, "autorestart", val ? "true" : "false");
+                    IniFile.Save(IniPath, lines);
+                    return val;
+                }
+            }
+            return true; // template default
+        }
+        catch (Exception ex) { Logging.Log("LoadAutoRestart failed: " + ex.Message); return true; }
+    }
+
+    public static void SaveAutoRestart(bool enabled)
+    {
+        try
+        {
+            var lines = IniFile.Load(IniPath);
+            IniFile.Set(lines, "autorestart", enabled ? "true" : "false");
+            IniFile.Save(IniPath, lines);
+        }
+        catch (Exception ex) { Logging.Log("save autoRestart failed: " + ex.Message); }
+    }
+
+    // ---- autostart: ini is authoritative; the Windows Run key is only a mirror ----
+
     public static bool IsAutostartEnabled()
     {
         try
         {
+            var lines = IniFile.Load(IniPath);
+            string v = IniFile.Get(lines, "autostart");
+            if (v != null)
+            {
+                bool? b = ParseBool(v);
+                if (b != null) return b.Value;
+            }
+            // fallback: legacy registry Run key
             using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false))
             {
-                if (k == null) return false;
-                return k.GetValue("dsh-tray") != null;
+                return k != null && k.GetValue("dsh-tray") != null;
             }
         }
         catch { return false; }
     }
 
+    public static void SetAutostart(bool want)
+    {
+        try
+        {
+            var lines = IniFile.Load(IniPath);
+            IniFile.Set(lines, "autostart", want ? "true" : "false");
+            IniFile.Save(IniPath, lines);
+            WriteRunKey(want);
+            Logging.Log("autostart = " + want);
+        }
+        catch (Exception ex) { Logging.Log("set autostart failed: " + ex.Message); }
+    }
+
     public static void ToggleAutostart()
     {
-        bool want = !IsAutostartEnabled();
+        SetAutostart(!IsAutostartEnabled());
+    }
+
+    // ensure the Windows Run key mirrors the ini `autostart` value at startup
+    public static void SyncAutostartFromIni()
+    {
+        try
+        {
+            var lines = IniFile.Load(IniPath);
+            string v = IniFile.Get(lines, "autostart");
+            if (v == null) return;
+            bool? b = ParseBool(v);
+            if (b == null) return;
+            WriteRunKey(b.Value);
+        }
+        catch (Exception ex) { Logging.Log("SyncAutostartFromIni failed: " + ex.Message); }
+    }
+
+    static void WriteRunKey(bool want)
+    {
         try
         {
             using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
@@ -214,46 +318,8 @@ static class Config
                 if (want) k.SetValue("dsh-tray", "\"" + Application.ExecutablePath + "\"");
                 else k.DeleteValue("dsh-tray", false);
             }
-            Logging.Log("autostart = " + want);
         }
-        catch (Exception ex) { Logging.Log("autostart toggle failed: " + ex.Message); }
-    }
-
-    public static bool LoadAutoRestart()
-    {
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\dsh-tray", false))
-            {
-                if (k == null)
-                {
-                    // one-time migration from the old key name
-                    using (var old = Registry.CurrentUser.OpenSubKey(@"Software\DSHTray", false))
-                    {
-                        if (old == null) return false;
-                        object ov = old.GetValue("AutoRestart");
-                        bool val = ov != null && Convert.ToInt32(ov) == 1;
-                        if (val) SaveAutoRestart(val); // copy into the new key
-                        return val;
-                    }
-                }
-                object v = k.GetValue("AutoRestart");
-                return v != null && Convert.ToInt32(v) == 1;
-            }
-        }
-        catch { return false; }
-    }
-
-    public static void SaveAutoRestart(bool enabled)
-    {
-        try
-        {
-            using (var k = Registry.CurrentUser.CreateSubKey(@"Software\dsh-tray"))
-            {
-                k.SetValue("AutoRestart", enabled ? 1 : 0);
-            }
-        }
-        catch (Exception ex) { Logging.Log("save autoRestart failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("write run key failed: " + ex.Message); }
     }
 
     public static bool IsDarkMode()
@@ -277,37 +343,10 @@ static class Config
     {
         try
         {
-            string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
-            var lines = new List<string>();
-            if (File.Exists(ini))
-            {
-                lines.AddRange(File.ReadAllLines(ini));
-            }
-            else
-            {
-                // no ini yet: seed it from the embedded commented template first, so a bare
-                // lang-only file is never produced and the template is always visible
-                using (Stream s = Assembly.GetExecutingAssembly().GetManifestResourceStream("dshtray.ini.example"))
-                    if (s != null) using (var r = new StreamReader(s))
-                        lines.AddRange(r.ReadToEnd().Split(new[] { "\r\n", "\n" }, StringSplitOptions.None));
-            }
-            bool replaced = false;
-            for (int i = 0; i < lines.Count; i++)
-            {
-                string trimmed = lines[i].Trim();
-                if (trimmed.Length == 0 || trimmed.StartsWith("#") || trimmed.StartsWith(";")) continue;
-                int eq = trimmed.IndexOf('=');
-                if (eq <= 0) continue;
-                string key = trimmed.Substring(0, eq).Trim().ToLowerInvariant();
-                if (key == "lang")
-                {
-                    lines[i] = "lang=" + lang;
-                    replaced = true;
-                    break;
-                }
-            }
-            if (!replaced) lines.Add("lang=" + lang);
-            File.WriteAllLines(ini, lines.ToArray(), Encoding.UTF8);
+            EnsureIni();
+            var lines = IniFile.Load(IniPath);
+            IniFile.Set(lines, "lang", lang);
+            IniFile.Save(IniPath, lines);
         }
         catch (Exception ex) { Logging.Log("SaveLang failed: " + ex.Message); }
     }
