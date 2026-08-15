@@ -19,10 +19,12 @@ class SettingsForm : Form
     Label lblSecAbout;
     Panel lineAbout;
     Label lblLanguage;
+    Panel langPanel;
     RadioButton radioAuto;
     RadioButton radioZh;
     RadioButton radioEn;
     Label lblTheme;
+    Panel themePanel;
     RadioButton radioThemeAuto;
     RadioButton radioThemeLight;
     RadioButton radioThemeDark;
@@ -83,21 +85,32 @@ class SettingsForm : Form
         lblLanguage = new Label { Left = 16, Top = 44, Width = 90, Height = 22 };
         lblLanguage.AutoSize = false;
         lblLanguage.TextAlign = ContentAlignment.MiddleLeft;
-        radioAuto = new RadioButton { Left = 120, Top = 44, AutoSize = true };
+        // each radio group gets its OWN Panel parent: WinForms RadioButtons group by parent
+        // container, so language (3) and theme (3) radios must NOT share the Form directly or
+        // they form ONE mutual-exclusion group (the bug). Radio positions are panel-relative.
+        langPanel = new Panel { Left = 120, Top = 44, Width = 400, Height = 26, BorderStyle = BorderStyle.None };
+        radioAuto = new RadioButton { Left = 0, Top = 0, AutoSize = true };
         radioAuto.CheckedChanged += delegate { OnLangChanged(radioAuto); };
-        radioZh = new RadioButton { Left = 220, Top = 44, AutoSize = true };
+        radioZh = new RadioButton { Left = 0, Top = 0, AutoSize = true };
         radioZh.CheckedChanged += delegate { OnLangChanged(radioZh); };
-        radioEn = new RadioButton { Left = 292, Top = 44, AutoSize = true };
+        radioEn = new RadioButton { Left = 0, Top = 0, AutoSize = true };
         radioEn.CheckedChanged += delegate { OnLangChanged(radioEn); };
+        langPanel.Controls.Add(radioAuto);
+        langPanel.Controls.Add(radioZh);
+        langPanel.Controls.Add(radioEn);
         lblTheme = new Label { Left = 16, Top = 76, Width = 90, Height = 22 };
         lblTheme.AutoSize = false;
         lblTheme.TextAlign = ContentAlignment.MiddleLeft;
-        radioThemeAuto = new RadioButton { Left = 120, Top = 76, AutoSize = true };
+        themePanel = new Panel { Left = 120, Top = 76, Width = 400, Height = 26, BorderStyle = BorderStyle.None };
+        radioThemeAuto = new RadioButton { Left = 0, Top = 0, AutoSize = true };
         radioThemeAuto.CheckedChanged += delegate { OnThemeChanged(radioThemeAuto); };
-        radioThemeLight = new RadioButton { Left = 210, Top = 76, AutoSize = true };
+        radioThemeLight = new RadioButton { Left = 0, Top = 0, AutoSize = true };
         radioThemeLight.CheckedChanged += delegate { OnThemeChanged(radioThemeLight); };
-        radioThemeDark = new RadioButton { Left = 282, Top = 76, AutoSize = true };
+        radioThemeDark = new RadioButton { Left = 0, Top = 0, AutoSize = true };
         radioThemeDark.CheckedChanged += delegate { OnThemeChanged(radioThemeDark); };
+        themePanel.Controls.Add(radioThemeAuto);
+        themePanel.Controls.Add(radioThemeLight);
+        themePanel.Controls.Add(radioThemeDark);
         chkAutoRestart = new CheckBox { Left = 16, Top = 108, Width = 528, Height = 22 };
         chkAutoRestart.Checked = dp.AutoRestartEnabled;
         chkAutoRestart.CheckedChanged += delegate { OnAutoRestartChanged(); };
@@ -138,13 +151,9 @@ class SettingsForm : Form
         Controls.Add(lblSecGeneral);
         Controls.Add(lineGeneral);
         Controls.Add(lblLanguage);
-        Controls.Add(radioAuto);
-        Controls.Add(radioZh);
-        Controls.Add(radioEn);
+        Controls.Add(langPanel);
         Controls.Add(lblTheme);
-        Controls.Add(radioThemeAuto);
-        Controls.Add(radioThemeLight);
-        Controls.Add(radioThemeDark);
+        Controls.Add(themePanel);
         Controls.Add(chkAutoRestart);
         Controls.Add(chkAutostart);
         Controls.Add(lblSecAbout);
@@ -183,6 +192,13 @@ class SettingsForm : Form
 
         lineGeneral.BackColor = line;
         lineAbout.BackColor = line;
+
+        // panels host the radio groups; paint them to match the form so no default light panel
+        // shows through in dark mode
+        langPanel.BackColor = back;
+        langPanel.ForeColor = fore;
+        themePanel.BackColor = back;
+        themePanel.ForeColor = fore;
 
         lblSecGeneral.ForeColor = fore;
         lblSecAbout.ForeColor = fore;
