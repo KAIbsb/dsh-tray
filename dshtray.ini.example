@@ -6,7 +6,9 @@
 ; ==========================================================
 
 ; Harness 网页地址(默认 http://127.0.0.1:3080,改端口直接改这里;端口由 url 推导)
+; 端口必须与 harness 实际监听端口一致(默认 3080);修改前请先在 harness 侧配置对应端口
 ; Harness web URL (default http://127.0.0.1:3080; change it here for a custom port, the port is derived from it)
+; the port must match the port the harness actually listens on (default 3080); configure the harness side first when changing it
 url=http://127.0.0.1:3080
 
 ; 界面语言:zh / en(留空 = 跟随系统)

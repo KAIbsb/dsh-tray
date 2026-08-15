@@ -32,13 +32,14 @@ static class WindowMgr
         catch (Exception ex) { Logging.Log("OpenWindow failed: " + ex.Message); }
     }
 
-    // find Chrome top-level windows whose title matches the DSH webui and send Ctrl+R
-    public static void ReloadAppWindow()
+    // enumerate top-level windows owned by a configured browser (Chrome/Edge/etc.), returning
+    // hwnd+title pairs. Shared by ReloadAppWindow (title match) and FindWindows (report), so the
+    // EnumWindows+visibility+pid+browser-filter boilerplate lives in exactly one place.
+    static List<KeyValuePair<IntPtr, string>> EnumerateAppWindows()
     {
+        var windows = new List<KeyValuePair<IntPtr, string>>();
         try
         {
-            const string title = "DeepSeek Harness";
-            var targets = new List<IntPtr>();
             Win32.EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
             {
                 if (!Win32.IsWindowVisible(hWnd)) return true;
@@ -51,13 +52,29 @@ static class WindowMgr
                     {
                         var sb = new StringBuilder(256);
                         Win32.GetWindowText(hWnd, sb, 256);
-                        if (sb.ToString().IndexOf(title, StringComparison.OrdinalIgnoreCase) >= 0)
-                            targets.Add(hWnd);
+                        windows.Add(new KeyValuePair<IntPtr, string>(hWnd, sb.ToString()));
                     }
                 }
-                catch (Exception ex) { Logging.Log("ReloadAppWindow GetProcessById failed: " + ex.Message); }
+                catch (Exception ex) { Logging.Log("EnumerateAppWindows GetProcessById failed: " + ex.Message); }
                 return true;
             }, IntPtr.Zero);
+        }
+        catch (Exception ex) { Logging.Log("EnumerateAppWindows failed: " + ex.Message); }
+        return windows;
+    }
+
+    // find Chrome top-level windows whose title matches the DSH webui and send Ctrl+R
+    public static void ReloadAppWindow()
+    {
+        try
+        {
+            const string title = "DeepSeek Harness";
+            var targets = new List<IntPtr>();
+            foreach (var w in EnumerateAppWindows())
+            {
+                if (w.Value.IndexOf(title, StringComparison.OrdinalIgnoreCase) >= 0)
+                    targets.Add(w.Key);
+            }
 
             if (targets.Count == 0) { Logging.Log("ReloadAppWindow: no matching window"); return; }
 
@@ -88,28 +105,22 @@ static class WindowMgr
     }
 
     // headless: list Chrome top-level windows (read-only), returned as newline-joined text.
-    // The enumeration logic is unchanged; only the report writing moved to the caller.
+    // The output format (hwnd + pid + title) is unchanged; the pid is re-derived from each hwnd
+    // only at report time so the shared enumerator can stay hwnd+title pairs.
     public static string FindWindows()
     {
         var sb = new StringBuilder();
-        Win32.EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
+        try
         {
-            if (!Win32.IsWindowVisible(hWnd)) return true;
-            uint pid;
-            Win32.GetWindowThreadProcessId(hWnd, out pid);
-            try
+            foreach (var w in EnumerateAppWindows())
             {
-                var p = Process.GetProcessById((int)pid);
-                if (Config.Current.BrowserNames.Contains(p.ProcessName.ToLowerInvariant()))
-                {
-                    var t = new StringBuilder(256);
-                    Win32.GetWindowText(hWnd, t, 256);
-                    sb.AppendLine("hwnd=" + hWnd + " pid=" + pid + " title=[" + t.ToString() + "]");
-                }
+                uint pid;
+                IntPtr hwnd = w.Key;
+                Win32.GetWindowThreadProcessId(hwnd, out pid);
+                sb.AppendLine("hwnd=" + hwnd + " pid=" + pid + " title=[" + w.Value + "]");
             }
-            catch (Exception ex) { Logging.Log("RunFindWindow GetProcessById failed: " + ex.Message); }
-            return true;
-        }, IntPtr.Zero);
+        }
+        catch (Exception ex) { Logging.Log("FindWindows failed: " + ex.Message); }
         return sb.ToString();
     }
 }
