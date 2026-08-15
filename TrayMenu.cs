@@ -49,6 +49,7 @@ static class TrayMenu
         BuildTray();
         // operation-failure feedback: the tray owns the NotifyIcon, so it is the balloon owner
         UiFeedback.BalloonRequested += OnBalloon;
+        UiFeedback.InfoRequested += OnInfo;
         if (dp.State == DshState.Stopped)
         {
 #pragma warning disable 4014 // fire-and-forget initial start; the status icon settles via UpdateStatus
@@ -66,8 +67,9 @@ static class TrayMenu
 
     public static void Dispose()
     {
-        // static event: unsubscribe so a reload / re-Init cannot double-fire the balloon handler
+        // static events: unsubscribe so a reload / re-Init cannot double-fire the balloon handlers
         UiFeedback.BalloonRequested -= OnBalloon;
+        UiFeedback.InfoRequested -= OnInfo;
         if (pollTimer != null) { pollTimer.Stop(); pollTimer.Dispose(); }
         if (whiteIcon != null) whiteIcon.Dispose();
         if (blueIcon != null) blueIcon.Dispose();
@@ -80,6 +82,28 @@ static class TrayMenu
     static void OnBalloon(string msg)
     {
         if (tray != null) tray.ShowBalloonTip(4000, "dsh-tray", msg, ToolTipIcon.Error);
+    }
+
+    // UiFeedback subscriber: shows a neutral/informational balloon (e.g. auto-update ready)
+    static void OnInfo(string msg)
+    {
+        if (tray != null) tray.ShowBalloonTip(4000, "dsh-tray", msg, ToolTipIcon.Info);
+    }
+
+    // Apply the current effective theme (ini override or system) immediately: refresh the tray icon
+    // + process uxtheme and re-theme an open settings dialog. Called by SettingsForm after the user
+    // changes the theme override. The 3s PollTick remains as a fallback (it no-ops when unchanged).
+    public static void ApplyThemeNow()
+    {
+        bool d = Config.IsDarkMode();
+        if (d != darkMode)
+        {
+            darkMode = d;
+            Win32.ApplyAppTheme(darkMode);
+            Logging.Log("theme applied " + (d ? "dark" : "light"));
+        }
+        if (openSettings != null && !openSettings.IsDisposed) openSettings.ApplyTheme();
+        UpdateStatus();
     }
 
     static void PollTick()

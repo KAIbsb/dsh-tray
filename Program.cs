@@ -119,6 +119,7 @@ static class Program
         sb.AppendLine("self integrity=" + dp.SelfIntegrity);
         sb.AppendLine("autoRestart=" + dp.AutoRestartEnabled);
         sb.AppendLine("ui lang=" + Lang.Code);
+        sb.AppendLine("themeOverride=" + (Config.ThemeOverride ?? "") + " isDark=" + Config.IsDarkMode());
         using (Stream rs = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-blue.png"))
             sb.AppendLine("blue icon resource=" + (rs != null));
         using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-dark.png"))

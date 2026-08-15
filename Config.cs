@@ -345,8 +345,38 @@ static class Config
         catch (Exception ex) { Logging.Log("write run key failed: " + ex.Message); }
     }
 
+    // manual theme override from the ini `theme` key: "dark" / "light"; anything else (empty,
+    // unknown) means follow the system registry. Null when the key is absent.
+    public static string ThemeOverride
+    {
+        get { return IniFile.Get(IniLines(), "theme"); }
+    }
+
+    // persist the `theme` ini key ("" / "light" / "dark"); follows the standard write-then-resync
+    // pattern so the in-memory iniLines mirror stays consistent with the file.
+    public static void SetTheme(string theme)
+    {
+        try
+        {
+            var lines = IniLines();
+            IniFile.Set(lines, "theme", theme ?? "");
+            IniFile.Save(IniPath, lines);
+            SyncIniLines();
+            Logging.Log("theme override = " + (string.IsNullOrEmpty(theme) ? "(follow system)" : theme));
+        }
+        catch (Exception ex) { Logging.Log("set theme failed: " + ex.Message); }
+    }
+
     public static bool IsDarkMode()
     {
+        // manual override wins; else fall back to the system Registry theme
+        string overrideTheme = ThemeOverride;
+        if (!string.IsNullOrEmpty(overrideTheme))
+        {
+            string t = overrideTheme.Trim().ToLowerInvariant();
+            if (t == "dark") return true;
+            if (t == "light") return false;
+        }
         try
         {
             using (var k = Registry.CurrentUser.OpenSubKey(

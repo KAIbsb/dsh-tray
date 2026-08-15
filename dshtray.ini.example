@@ -23,6 +23,10 @@ autorestart=true
 ; Start with Windows: true / false (also written to the Windows startup)
 autostart=false
 
+; 主题:light / dark(留空 = 跟随系统)
+; Theme: light / dark (empty = follow the system)
+theme=
+
 ; Node.js 可执行文件路径(留空 = 自动检测)
 ; Path to node.exe (empty = auto-detect)
 node=

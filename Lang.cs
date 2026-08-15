@@ -45,6 +45,15 @@ static class Lang
         zh["feedback.openWindowFailed"] = "打开窗口失败,详情见日志";
         zh["feedback.openLogsFailed"] = "打开日志文件夹失败,详情见日志";
         zh["feedback.openConfigFailed"] = "打开配置文件失败,详情见日志";
+        zh["settings.autoUpdate"] = "自动更新";
+        zh["settings.updating"] = "更新中…";
+        zh["settings.updateReady"] = "更新已就绪,重启托盘生效";
+        zh["settings.autoUpdateFailed"] = "自动更新失败,详情见日志";
+        zh["settings.updateDeployFailed"] = "下载完成但部署失败,请退出托盘后运行新版或手动替换";
+        zh["settings.theme"] = "主题";
+        zh["settings.themeAuto"] = "跟随系统";
+        zh["settings.themeLight"] = "亮";
+        zh["settings.themeDark"] = "暗";
 
         en["menu.open"] = "Open Window";
         en["menu.start"] = "Start";
@@ -79,6 +88,15 @@ static class Lang
         en["feedback.openWindowFailed"] = "Failed to open the window; see the log";
         en["feedback.openLogsFailed"] = "Failed to open the logs folder; see the log";
         en["feedback.openConfigFailed"] = "Failed to open the config file; see the log";
+        en["settings.autoUpdate"] = "Auto-update";
+        en["settings.updating"] = "Updating…";
+        en["settings.updateReady"] = "Update ready; restart the tray to apply";
+        en["settings.autoUpdateFailed"] = "Auto-update failed; see the log";
+        en["settings.updateDeployFailed"] = "Download finished but deployment failed; exit the tray and run the new build or replace it manually";
+        en["settings.theme"] = "Theme";
+        en["settings.themeAuto"] = "Follow system";
+        en["settings.themeLight"] = "Light";
+        en["settings.themeDark"] = "Dark";
 
         if (!string.IsNullOrEmpty(iniLang))
             Code = (iniLang.Trim().ToLowerInvariant() == "en") ? "en" : "zh";

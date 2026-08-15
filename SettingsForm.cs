@@ -22,11 +22,16 @@ class SettingsForm : Form
     RadioButton radioAuto;
     RadioButton radioZh;
     RadioButton radioEn;
+    Label lblTheme;
+    RadioButton radioThemeAuto;
+    RadioButton radioThemeLight;
+    RadioButton radioThemeDark;
     CheckBox chkAutoRestart;
     CheckBox chkAutostart;
     Button btnCheck;
     Label lblResult;
     LinkLabel lnkDownload;
+    Button btnAutoUpdate;
     Label lblVersion;
     Label lblCurrentUrl;
     LinkLabel lnkRepo;
@@ -53,7 +58,7 @@ class SettingsForm : Form
         MaximizeBox = false;
         ShowInTaskbar = true;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(560, 392);
+        ClientSize = new Size(560, 426);
         AutoScaleMode = AutoScaleMode.Dpi;
         try { ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         if (ownedIcon != null) Icon = ownedIcon;
@@ -84,39 +89,50 @@ class SettingsForm : Form
         radioZh.CheckedChanged += delegate { OnLangChanged(radioZh); };
         radioEn = new RadioButton { Left = 292, Top = 44, AutoSize = true };
         radioEn.CheckedChanged += delegate { OnLangChanged(radioEn); };
-        chkAutoRestart = new CheckBox { Left = 16, Top = 76, Width = 528, Height = 22 };
+        lblTheme = new Label { Left = 16, Top = 76, Width = 90, Height = 22 };
+        lblTheme.AutoSize = false;
+        lblTheme.TextAlign = ContentAlignment.MiddleLeft;
+        radioThemeAuto = new RadioButton { Left = 120, Top = 76, AutoSize = true };
+        radioThemeAuto.CheckedChanged += delegate { OnThemeChanged(radioThemeAuto); };
+        radioThemeLight = new RadioButton { Left = 210, Top = 76, AutoSize = true };
+        radioThemeLight.CheckedChanged += delegate { OnThemeChanged(radioThemeLight); };
+        radioThemeDark = new RadioButton { Left = 282, Top = 76, AutoSize = true };
+        radioThemeDark.CheckedChanged += delegate { OnThemeChanged(radioThemeDark); };
+        chkAutoRestart = new CheckBox { Left = 16, Top = 108, Width = 528, Height = 22 };
         chkAutoRestart.Checked = dp.AutoRestartEnabled;
         chkAutoRestart.CheckedChanged += delegate { OnAutoRestartChanged(); };
-        chkAutostart = new CheckBox { Left = 16, Top = 108, Width = 528, Height = 22 };
+        chkAutostart = new CheckBox { Left = 16, Top = 140, Width = 528, Height = 22 };
         chkAutostart.Checked = Config.IsAutostartEnabled();
         chkAutostart.CheckedChanged += delegate { OnAutostartChanged(); };
 
         // ---- section 2: about / updates ----
-        lblSecAbout = new Label { Left = 16, Top = 152, AutoSize = true };
+        lblSecAbout = new Label { Left = 16, Top = 184, AutoSize = true };
         lblSecAbout.Font = new Font(lblSecAbout.Font, FontStyle.Bold);
-        lineAbout = new Panel { Left = 16, Top = 174, Width = 528, Height = 1 };
-        lblVersion = new Label { Left = 16, Top = 184, Width = 528, Height = 20 };
+        lineAbout = new Panel { Left = 16, Top = 206, Width = 528, Height = 1 };
+        lblVersion = new Label { Left = 16, Top = 216, Width = 528, Height = 20 };
         lblVersion.AutoSize = false;
         lblVersion.TextAlign = ContentAlignment.MiddleLeft;
-        lblCurrentUrl = new Label { Left = 16, Top = 206, Width = 528, Height = 22 };
+        lblCurrentUrl = new Label { Left = 16, Top = 238, Width = 528, Height = 22 };
         lblCurrentUrl.AutoSize = false;
         lblCurrentUrl.TextAlign = ContentAlignment.MiddleLeft;
-        lnkRepo = new LinkLabel { Left = 16, Top = 232, Width = 528, Height = 20 };
+        lnkRepo = new LinkLabel { Left = 16, Top = 264, Width = 528, Height = 20 };
         lnkRepo.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnCheck = new Button { Left = 16, Top = 264, Width = 150, Height = 28 };
+        btnCheck = new Button { Left = 16, Top = 296, Width = 150, Height = 28 };
         btnCheck.Click += delegate { OnCheckUpdate(); };
-        lblResult = new Label { Left = 174, Top = 268, Width = 260, Height = 22 };
+        lblResult = new Label { Left = 178, Top = 300, Width = 180, Height = 22 };
         lblResult.AutoSize = false;
         lblResult.TextAlign = ContentAlignment.MiddleLeft;
-        lnkDownload = new LinkLabel { Left = 182, Top = 267, AutoSize = true, Visible = false };
+        lnkDownload = new LinkLabel { Left = 186, Top = 299, AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnOpenConfig = new Button { Left = 16, Top = 296, Width = 256, Height = 28 };
+        btnAutoUpdate = new Button { Left = 400, Top = 296, Width = 132, Height = 28, Visible = false };
+        btnAutoUpdate.Click += delegate { OnAutoUpdate(); };
+        btnOpenConfig = new Button { Left = 16, Top = 328, Width = 256, Height = 28 };
         btnOpenConfig.Click += delegate { OpenConfig(); };
-        btnOpenLogs = new Button { Left = 288, Top = 296, Width = 256, Height = 28 };
+        btnOpenLogs = new Button { Left = 288, Top = 328, Width = 256, Height = 28 };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
 
         // ---- close button (bottom-right) ----
-        btnClose = new Button { Left = 454, Top = 342, Width = 90, Height = 30 };
+        btnClose = new Button { Left = 454, Top = 374, Width = 90, Height = 30 };
         btnClose.Click += delegate { Close(); };
 
         Controls.Add(lblSecGeneral);
@@ -125,6 +141,10 @@ class SettingsForm : Form
         Controls.Add(radioAuto);
         Controls.Add(radioZh);
         Controls.Add(radioEn);
+        Controls.Add(lblTheme);
+        Controls.Add(radioThemeAuto);
+        Controls.Add(radioThemeLight);
+        Controls.Add(radioThemeDark);
         Controls.Add(chkAutoRestart);
         Controls.Add(chkAutostart);
         Controls.Add(lblSecAbout);
@@ -135,6 +155,7 @@ class SettingsForm : Form
         Controls.Add(btnCheck);
         Controls.Add(lblResult);
         Controls.Add(lnkDownload);
+        Controls.Add(btnAutoUpdate);
         Controls.Add(btnOpenConfig);
         Controls.Add(btnOpenLogs);
         Controls.Add(btnClose);
@@ -144,7 +165,8 @@ class SettingsForm : Form
     }
 
     // full light/dark adaptation across form + separators + every control
-    void ApplyTheme()
+    // public: TrayMenu.ApplyThemeNow() calls it to re-theme the open dialog on a theme change
+    public void ApplyTheme()
     {
         bool dark = themeOverride ?? Config.IsDarkMode();
         Color back = dark ? Color.FromArgb(0x20, 0x20, 0x20) : SystemColors.Control;       // form background
@@ -165,6 +187,7 @@ class SettingsForm : Form
         lblSecGeneral.ForeColor = fore;
         lblSecAbout.ForeColor = fore;
         lblLanguage.ForeColor = fore;
+        lblTheme.ForeColor = fore;
         lblResult.ForeColor = fore;
         lblVersion.ForeColor = dim;
         lblCurrentUrl.ForeColor = dim;
@@ -172,10 +195,14 @@ class SettingsForm : Form
         StyleRadio(radioAuto, fore);
         StyleRadio(radioZh, fore);
         StyleRadio(radioEn, fore);
+        StyleRadio(radioThemeAuto, fore);
+        StyleRadio(radioThemeLight, fore);
+        StyleRadio(radioThemeDark, fore);
         StyleCheckBox(chkAutoRestart, fore);
         StyleCheckBox(chkAutostart, fore);
 
         StyleButton(btnCheck, btnBack, fore, btnBorder, btnHover);
+        StyleButton(btnAutoUpdate, btnBack, fore, btnBorder, btnHover);
         StyleButton(btnOpenConfig, btnBack, fore, btnBorder, btnHover);
         StyleButton(btnOpenLogs, btnBack, fore, btnBorder, btnHover);
         // brand-blue primary button, identical in both themes
@@ -230,9 +257,21 @@ class SettingsForm : Form
         radioAuto.Checked = (langCode == "");
         radioZh.Checked = (langCode == "zh");
         radioEn.Checked = (langCode == "en");
+        lblTheme.Text = Lang.T("settings.theme");
+        radioThemeAuto.Text = Lang.T("settings.themeAuto");
+        radioThemeLight.Text = Lang.T("settings.themeLight");
+        radioThemeDark.Text = Lang.T("settings.themeDark");
+        // dynamic equal spacing: recompute Left after text widths settle (AutoSize)
+        radioThemeLight.Left = radioThemeAuto.Right + 16;
+        radioThemeDark.Left = radioThemeLight.Right + 16;
+        string theme = (Config.ThemeOverride ?? "").Trim().ToLowerInvariant();
+        radioThemeAuto.Checked = (theme.Length == 0);
+        radioThemeLight.Checked = (theme == "light");
+        radioThemeDark.Checked = (theme == "dark");
         chkAutoRestart.Text = Lang.T("settings.autoRestart");
         chkAutostart.Text = Lang.T("settings.autostart");
         btnCheck.Text = Lang.T("settings.checkUpdate");
+        btnAutoUpdate.Text = Lang.T("settings.autoUpdate");
         lblVersion.Text = string.Format(Lang.T("settings.version"), appVersion);
         lblCurrentUrl.Text = string.Format(Lang.T("settings.currentUrl"), Config.Current.WebUrl);
         lnkRepo.Text = Lang.T("settings.repo");
@@ -255,6 +294,21 @@ class SettingsForm : Form
         ApplyLang();
     }
 
+    // only fire on a radio becoming checked (radio groups emit both an uncheck and a check)
+    void OnThemeChanged(RadioButton rb)
+    {
+        if (applyingLang) return;
+        if (!rb.Checked) return;
+        string val;
+        if (rb == radioThemeAuto) val = "";
+        else if (rb == radioThemeLight) val = "light";
+        else val = "dark";
+        Config.SetTheme(val);
+        // apply immediately: tray sees the new effective theme (icon + uxtheme) and this dialog
+        // re-themes itself (TrayMenu.ApplyThemeNow also re-themes the open dialog via ApplyTheme)
+        TrayMenu.ApplyThemeNow();
+    }
+
     void OnAutoRestartChanged()
     {
         dp.AutoRestartEnabled = chkAutoRestart.Checked;
@@ -267,6 +321,84 @@ class SettingsForm : Form
         {
             Config.ToggleAutostart();
         }
+    }
+
+    // download the new exe to a temp path, verify its checksum, then deploy it over the running
+    // exe (rename the running exe aside when possible). No process restart: the user restarts the
+    // tray manually to apply. UI is disabled while running; result arrives via balloons (Info on
+    // success/partial, Fail on error) and the button is re-enabled.
+    void OnAutoUpdate()
+    {
+        btnAutoUpdate.Enabled = false;
+        btnAutoUpdate.Text = Lang.T("settings.updating");
+        string destPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "dsh-tray", "update", "dsh-tray.exe.new");
+        Task.Run(() =>
+        {
+            bool downloaded = UpdateCheck.DownloadAndVerify(destPath);
+            if (!downloaded)
+            {
+                TryCleanup(destPath);
+                BeginInvokeSafe(delegate
+                {
+                    btnAutoUpdate.Enabled = true;
+                    btnAutoUpdate.Text = Lang.T("settings.autoUpdate");
+                });
+                UiFeedback.Fail(Lang.T("settings.autoUpdateFailed"));
+                return;
+            }
+            // deploy: rename running exe aside (may fail if locked / read-only) then move new in
+            string exePath = Application.ExecutablePath;
+            string oldPath = exePath + ".old.tmp.exe";
+            try
+            {
+                bool swapped = false;
+                if (File.Exists(oldPath)) TryDeleteFile(oldPath);
+                try { File.Move(exePath, oldPath); swapped = true; } catch { swapped = false; }
+                if (swapped)
+                {
+                    File.Move(destPath, exePath);
+                    UiFeedback.Info(Lang.T("settings.updateReady"));
+                }
+                else
+                {
+                    // running exe is locked (a tray instance holds it): a running process cannot
+                    // overwrite its own binary, so swap is normally unavailable here. Keep the
+                    // verified download in place for manual deployment after exiting the tray, and
+                    // say so clearly.
+                    Logging.Log("auto-update: running exe is locked, verified binary left at " + destPath);
+                    UiFeedback.Fail(Lang.T("settings.updateDeployFailed"));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logging.Log("auto-update deploy failed: " + ex.Message);
+                UiFeedback.Fail(Lang.T("settings.autoUpdateFailed"));
+                TryCleanup(destPath);
+            }
+            BeginInvokeSafe(delegate
+            {
+                btnAutoUpdate.Enabled = true;
+                btnAutoUpdate.Text = Lang.T("settings.autoUpdate");
+            });
+        });
+    }
+
+    // thread-safe BeginInvoke that survives disposal races (the dialog may close mid-download)
+    void BeginInvokeSafe(Action a)
+    {
+        try { if (!IsDisposed) BeginInvoke(a); } catch { }
+    }
+
+    static void TryCleanup(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
+    }
+
+    static void TryDeleteFile(string path)
+    {
+        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 
     void OnCheckUpdate()
@@ -288,11 +420,13 @@ class SettingsForm : Form
                         // have grown) so they never overlap or clip the link's text
                         lnkDownload.Left = lblResult.Right + 8;
                         lnkDownload.Visible = true;
+                        btnAutoUpdate.Visible = true;
                     }
                     else
                     {
                         lblResult.Text = Lang.T("settings.upToDate");
                         lnkDownload.Visible = false;
+                        btnAutoUpdate.Visible = false;
                     }
                 });
             }
