@@ -25,15 +25,6 @@ static class Config
 {
     public static readonly AppConfig Current = new AppConfig();
 
-    // auto-restart flag: internal static field + public property. Consumers read/write through
-    // AutoRestartEnabled; LoadAutoRestart/ToggleAutoRestart/SaveAutoRestart use the field verbatim.
-    static bool autoRestartEnabled;
-    public static bool AutoRestartEnabled
-    {
-        get { return autoRestartEnabled; }
-        set { autoRestartEnabled = value; }
-    }
-
     public static void InitConfig()
     {
         LoadIniConfig();
@@ -232,7 +223,7 @@ static class Config
                         if (old == null) return false;
                         object ov = old.GetValue("AutoRestart");
                         bool val = ov != null && Convert.ToInt32(ov) == 1;
-                        if (val) SaveAutoRestart(); // copy into the new key
+                        if (val) SaveAutoRestart(val); // copy into the new key
                         return val;
                     }
                 }
@@ -243,23 +234,16 @@ static class Config
         catch { return false; }
     }
 
-    static void SaveAutoRestart()
+    public static void SaveAutoRestart(bool enabled)
     {
         try
         {
             using (var k = Registry.CurrentUser.CreateSubKey(@"Software\dsh-tray"))
             {
-                k.SetValue("AutoRestart", autoRestartEnabled ? 1 : 0);
+                k.SetValue("AutoRestart", enabled ? 1 : 0);
             }
         }
         catch (Exception ex) { Logging.Log("save autoRestart failed: " + ex.Message); }
-    }
-
-    public static void ToggleAutoRestart()
-    {
-        autoRestartEnabled = !autoRestartEnabled;
-        SaveAutoRestart();
-        Logging.Log("autoRestart = " + autoRestartEnabled);
     }
 
     public static bool IsDarkMode()

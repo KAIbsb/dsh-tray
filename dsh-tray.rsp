@@ -14,3 +14,6 @@ Lang.cs
 Win32.cs
 Logging.cs
 Config.cs
+DshProcess.cs
+WindowMgr.cs
+TrayMenu.cs
