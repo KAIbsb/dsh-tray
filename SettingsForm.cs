@@ -76,10 +76,10 @@ class SettingsForm : Form
         radioZh.CheckedChanged += delegate { OnLangChanged(radioZh); };
         radioEn = new RadioButton { Left = 292, Top = 44, AutoSize = true };
         radioEn.CheckedChanged += delegate { OnLangChanged(radioEn); };
-        chkAutoRestart = new CheckBox { Left = 16, Top = 76, Width = 400, Height = 22 };
+        chkAutoRestart = new CheckBox { Left = 16, Top = 76, Width = 528, Height = 22 };
         chkAutoRestart.Checked = dp.AutoRestartEnabled;
         chkAutoRestart.CheckedChanged += delegate { OnAutoRestartChanged(); };
-        chkAutostart = new CheckBox { Left = 16, Top = 108, Width = 400, Height = 22 };
+        chkAutostart = new CheckBox { Left = 16, Top = 108, Width = 528, Height = 22 };
         chkAutostart.Checked = Config.IsAutostartEnabled();
         chkAutostart.CheckedChanged += delegate { OnAutostartChanged(); };
 
@@ -99,9 +99,9 @@ class SettingsForm : Form
         lblResult.TextAlign = ContentAlignment.MiddleLeft;
         lnkDownload = new LinkLabel { Left = 410, Top = 243, AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnOpenConfig = new Button { Left = 16, Top = 272, Width = 220, Height = 28 };
+        btnOpenConfig = new Button { Left = 16, Top = 272, Width = 256, Height = 28 };
         btnOpenConfig.Click += delegate { OpenConfig(); };
-        btnOpenLogs = new Button { Left = 248, Top = 272, Width = 220, Height = 28 };
+        btnOpenLogs = new Button { Left = 288, Top = 272, Width = 256, Height = 28 };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
 
         // ---- close button (bottom-right) ----

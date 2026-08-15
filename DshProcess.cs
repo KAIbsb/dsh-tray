@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 
 // Process state machine for the DSH harness: spawn/kill/restart, port liveness, integrity-based
@@ -32,11 +33,15 @@ class DshProcess
     bool autoRestartEnabled;
     string lastDshUpWarn;
     Win32.IntegrityLevel selfIntegrity;
+    volatile bool isStarting;
 
     public DshProcess(AppConfig config)
     {
         cfg = config;
     }
+
+    // true while an async start/restart is in flight (the tray flashes the icon while starting)
+    public bool IsStarting { get { return isStarting; } }
 
     // integrity level of THIS tray process; set by the caller (no side effects in the ctor)
     public Win32.IntegrityLevel SelfIntegrity
@@ -62,7 +67,13 @@ class DshProcess
     {
         get
         {
-            if (dshProc != null && !dshProc.HasExited) { lastDshUpWarn = null; return true; }
+            try
+            {
+                if (dshProc != null && !dshProc.HasExited) { lastDshUpWarn = null; return true; }
+            }
+            catch (Exception ex) { Logging.Log("IsUp process check failed: " + ex.Message); }
+            // process object may have been disposed concurrently (background thread vs UI); fall
+            // through to the port probe
             if (!PortOpen(cfg.Port)) { lastDshUpWarn = null; return false; }
             // port is open but we don't own the listener: only treat it as "up" if the owner is node
             int pid = FindPidOnPort(cfg.Port);
@@ -84,7 +95,8 @@ class DshProcess
     // past the cooldowns, restart it. Returns whether a restart was triggered.
     public bool PollAutoRestart()
     {
-        if (autoRestartEnabled && !userStopped && !IsUp &&
+        // never auto-restart while an async start/restart is in flight (double-start race)
+        if (!isStarting && autoRestartEnabled && !userStopped && !IsUp &&
             Environment.TickCount - lastStartTick > AutoRestartStartCooldownMs &&
             Environment.TickCount - lastAutoRestartTick > AutoRestartRetryCooldownMs)
         {
@@ -191,6 +203,49 @@ class DshProcess
             waited += PortPollStepMs;
         }
         Logging.Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(cfg.Port));
+    }
+
+    // ---- async lifecycle (UI actions use these so the message pump is not blocked) ----
+
+    public async Task RestartAsync()
+    {
+        if (isStarting) return;
+        isStarting = true;
+        try
+        {
+            await Task.Run(() => { StopDsh(); StartDsh(); });
+            await WaitForPortUpAsync();
+        }
+        finally { isStarting = false; }
+    }
+
+    public async Task StartAndWaitAsync()
+    {
+        if (isStarting) return;
+        isStarting = true;
+        try
+        {
+            await Task.Run(() => StartDsh());
+            await WaitForPortUpAsync();
+        }
+        finally { isStarting = false; }
+    }
+
+    public async Task StopAsync()
+    {
+        await Task.Run(() => StopDsh());
+    }
+
+    // non-blocking port wait: Task.Delay instead of Thread.Sleep; same bounds and logging
+    async Task WaitForPortUpAsync()
+    {
+        int waited = 0;
+        while (!PortOpen(cfg.Port) && waited < PortWaitMs)
+        {
+            await Task.Delay(PortPollStepMs).ConfigureAwait(false);
+            waited += PortPollStepMs;
+        }
+        Logging.Log("WaitForPortUpAsync: waited=" + waited + "ms up=" + PortOpen(cfg.Port));
     }
 
     void WaitForPortFree()
