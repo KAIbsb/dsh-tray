@@ -6,12 +6,9 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net.Sockets;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Security.Principal;
 using System.Text;
 using System.Threading;
 using System.Windows.Forms;
-using Microsoft.Win32;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
@@ -26,7 +23,8 @@ static class Program
     // no hardcoded copy here to avoid drift
     static readonly string AppVersion = Assembly.GetExecutingAssembly().GetName().Version.ToString();
 
-    // ---- timing / size constants (named to make intent explicit; values unchanged) ----
+    // ---- timing constants (named to make intent explicit; values unchanged). These stay in
+    // Program for this phase; they move with the process state machine in a later phase ----
     const int PollIntervalMs = 3000;             // status-poll timer cadence
     const int AutoRestartStartCooldownMs = 10000; // min age of a start attempt before auto-restart
     const int AutoRestartRetryCooldownMs = 30000; // min gap between two auto-restart attempts
@@ -40,169 +38,6 @@ static class Program
     const int TaskkillWaitMs = 8000;              // taskkill subprocess wait timeout
     const int NetstatWaitMs = 5000;               // netstat subprocess wait timeout
     const int ElevatedKillWaitMs = 30000;         // elevated kill helper wait timeout
-    const int LogMaxBytes = 5 * 1024 * 1024;      // rotate the log once it exceeds this size
-    // ---- runtime configuration: resolved from dshtray.ini (next to exe) or auto-detected ----
-    static string NodePath;
-    static string DshEntry;
-    static string DshWorkDir;
-    static string ChromePath;
-    static string WebUrl = "http://127.0.0.1:3080";
-    static int Port = 3080;
-    static string iniLang;
-
-    static void InitConfig()
-    {
-        LoadIniConfig();
-        Lang.Init(iniLang);
-        Log("UI language: " + Lang.Code);
-        if (string.IsNullOrEmpty(NodePath) || !File.Exists(NodePath)) NodePath = DetectNode();
-        if (string.IsNullOrEmpty(DshEntry) || !File.Exists(DshEntry)) DshEntry = DetectDshEntry();
-        if (string.IsNullOrEmpty(DshWorkDir) && !string.IsNullOrEmpty(DshEntry))
-            DshWorkDir = Path.GetDirectoryName(Path.GetDirectoryName(DshEntry));
-        if (string.IsNullOrEmpty(ChromePath) || !File.Exists(ChromePath)) ChromePath = DetectChrome();
-        InitBrowserNames();
-        Log("Config: node=" + (NodePath ?? "NOT FOUND") +
-            " | dshEntry=" + (DshEntry ?? "NOT FOUND") +
-            " | chrome=" + (ChromePath ?? "NOT FOUND") +
-            " | url=" + WebUrl);
-    }
-
-    // process names whose windows we refresh on restart: the configured browser + chrome/msedge fallbacks
-    static List<string> browserNames = new List<string>();
-
-    static void InitBrowserNames()
-    {
-        browserNames.Clear();
-        if (!string.IsNullOrEmpty(ChromePath))
-        {
-            string n = Path.GetFileNameWithoutExtension(ChromePath);
-            if (!string.IsNullOrEmpty(n)) browserNames.Add(n.ToLowerInvariant());
-        }
-        if (!browserNames.Contains("chrome")) browserNames.Add("chrome");
-        if (!browserNames.Contains("msedge")) browserNames.Add("msedge");
-    }
-
-    // optional dshtray.ini next to the exe; keys: node, dshentry, dshworkdir, chrome, url, port
-    static void LoadIniConfig()
-    {
-        try
-        {
-            string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
-            if (!File.Exists(ini)) return;
-            foreach (string raw in File.ReadAllLines(ini))
-            {
-                string line = raw.Trim();
-                if (line.Length == 0 || line.StartsWith("#") || line.StartsWith(";")) continue;
-                int eq = line.IndexOf('=');
-                if (eq <= 0) continue;
-                string key = line.Substring(0, eq).Trim().ToLowerInvariant();
-                string val = line.Substring(eq + 1).Trim();
-                switch (key)
-                {
-                    case "node": NodePath = val; break;
-                    case "dshentry": DshEntry = val; break;
-                    case "dshworkdir": DshWorkDir = val; break;
-                    case "chrome": ChromePath = val; break;
-                    case "url":
-                        WebUrl = val;
-                        try { Port = new Uri(val).Port; } catch (Exception ex) { Log("ini url parse failed: " + ex.Message); }
-                        break;
-                    case "port":
-                        int p;
-                        if (int.TryParse(val, out p) && p > 0)
-                        {
-                            Port = p;
-                            WebUrl = "http://127.0.0.1:" + p;
-                        }
-                        break;
-                    case "lang":
-                        iniLang = val;
-                        break;
-                }
-            }
-        }
-        catch (Exception ex) { Log("LoadIniConfig failed: " + ex.Message); }
-    }
-
-    static string FindOnPath(string exe)
-    {
-        try
-        {
-            string pathVar = Environment.GetEnvironmentVariable("PATH");
-            if (pathVar == null) return null;
-            foreach (string dir in pathVar.Split(';'))
-            {
-                string d = dir.Trim().Trim('"');
-                if (d.Length == 0) continue;
-                string candidate = Path.Combine(d, exe);
-                if (Path.IsPathRooted(candidate) && File.Exists(candidate)) return candidate;
-            }
-        }
-        catch (Exception ex) { Log("FindOnPath failed: " + ex.Message); }
-        return null;
-    }
-
-    static string DetectNode()
-    {
-        string onPath = FindOnPath("node.exe");
-        if (onPath != null) return onPath;
-        string pf = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nodejs", "node.exe");
-        return File.Exists(pf) ? pf : null;
-    }
-
-    static string DetectDshEntry()
-    {
-        // 1. dsh shim on PATH -> sibling node_modules\@deepseek-ai\dsh\lib\bin.js
-        string shim = FindOnPath("dsh.cmd");
-        if (shim == null) shim = FindOnPath("dsh");
-        if (shim != null)
-        {
-            string entry = Path.Combine(Path.GetDirectoryName(shim), "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
-            if (File.Exists(entry)) return entry;
-        }
-        // 2. default npm global location (%APPDATA%\npm)
-        string npmGlobal = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm");
-        string entry2 = Path.Combine(npmGlobal, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
-        if (File.Exists(entry2)) return entry2;
-        // 3. npm root -g
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = "cmd.exe",
-                Arguments = "/c npm root -g",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true
-            };
-            using (var p = Process.Start(psi))
-            {
-                string root = p.StandardOutput.ReadToEnd().Trim();
-                p.WaitForExit(ProcessWaitExitMs);
-                if (root.Length > 0 && Directory.Exists(root))
-                {
-                    string entry3 = Path.Combine(root, "@deepseek-ai", "dsh", "lib", "bin.js");
-                    if (File.Exists(entry3)) return entry3;
-                }
-            }
-        }
-        catch (Exception ex) { Log("DetectDshEntry npm root -g failed: " + ex.Message); }
-        return null;
-    }
-
-    static string DetectChrome()
-    {
-        string[] candidates = {
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Google", "Chrome", "Application", "chrome.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Google", "Chrome", "Application", "chrome.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Google", "Chrome", "Application", "chrome.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Microsoft", "Edge", "Application", "msedge.exe"),
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Microsoft", "Edge", "Application", "msedge.exe")
-        };
-        foreach (string c in candidates)
-            if (File.Exists(c)) return c;
-        return null;
-    }
 
     static NotifyIcon tray;
     static Icon whiteIcon;
@@ -212,10 +47,7 @@ static class Program
     static Process dshProc;
     static System.Windows.Forms.Timer pollTimer;
     static Mutex mutex;
-    static readonly object logLock = new object();
-    static string logPath;
-    static IntegrityLevel selfIntegrity = IntegrityLevel.Unknown;
-    static bool autoRestartEnabled;
+    static Win32.IntegrityLevel selfIntegrity = Win32.IntegrityLevel.Unknown;
     static bool userStopped;
     static int lastStartTick;
     static int lastAutoRestartTick;
@@ -228,102 +60,6 @@ static class Program
     // keep TickCount and rely on this wraparound-safe int subtraction.
     static int lastLeftClickTick = -1000;
     static string lastDshUpWarn;
-
-    // ---- integrity (elevation) helpers ----
-    [DllImport("kernel32.dll", SetLastError = true)]
-    static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
-    [DllImport("kernel32.dll")]
-    static extern bool CloseHandle(IntPtr h);
-    [DllImport("advapi32.dll", SetLastError = true)]
-    static extern bool OpenProcessToken(IntPtr h, uint access, out IntPtr tok);
-    [DllImport("advapi32.dll", SetLastError = true)]
-    static extern bool GetTokenInformation(IntPtr tok, int cls, IntPtr info, uint len, out uint retLen);
-
-    const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
-    const uint TOKEN_QUERY = 0x0008;
-    const int TokenIntegrityLevel = 25;
-
-    // ---- window reload (refresh the Chrome app window) ----
-    [DllImport("user32.dll")]
-    static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
-    delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
-    [DllImport("user32.dll")]
-    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
-    [DllImport("user32.dll")]
-    static extern bool IsWindowVisible(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    static extern bool SetForegroundWindow(IntPtr hWnd);
-    [DllImport("user32.dll")]
-    static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
-    [DllImport("user32.dll")]
-    static extern IntPtr GetForegroundWindow();
-    [DllImport("user32.dll")]
-    static extern bool DestroyIcon(IntPtr hIcon);
-
-    // ---- native system menu ----
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    static extern IntPtr CreatePopupMenu();
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    static extern bool AppendMenuW(IntPtr hMenu, uint uFlags, uint uIDNewItem, string lpNewItem);
-    [DllImport("user32.dll")]
-    static extern bool DestroyMenu(IntPtr hMenu);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    static extern uint TrackPopupMenuEx(IntPtr hmenu, uint fuFlags, int x, int y, IntPtr hwnd, IntPtr lptpm);
-
-    const uint MF_STRING = 0x0000;
-    const uint MF_SEPARATOR = 0x0800;
-    const uint MF_GRAYED = 0x0001;
-    const uint MF_CHECKED = 0x0008;
-    const uint TPM_RIGHTBUTTON = 0x0002;
-    const uint TPM_RETURNCMD = 0x0100;
-
-    // ---- immersive dark mode for native menus ----
-    [DllImport("dwmapi.dll", PreserveSig = true)]
-    static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-    const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20; // Win10 2004+
-    const int DWMWA_USE_IMMERSIVE_DARK_MODE_OLD = 19; // Win10 1809/1903
-
-    static void ApplyMenuTheme(IntPtr hwnd)
-    {
-        try
-        {
-            int useDark = darkMode ? 1 : 0;
-            if (DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useDark, 4) != 0)
-                DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE_OLD, ref useDark, 4);
-        }
-        catch (Exception ex) { Log("ApplyMenuTheme failed: " + ex.Message); }
-    }
-
-    // ---- process-wide menu theme (uxtheme ordinals, same as Chromium/Firefox) ----
-    [DllImport("uxtheme.dll", EntryPoint = "#135", SetLastError = true)]
-    static extern int SetPreferredAppMode(int mode);
-    [DllImport("uxtheme.dll", EntryPoint = "#136", SetLastError = true)]
-    static extern void FlushMenuThemes();
-
-    const int PAM_DEFAULT = 0;
-    const int PAM_ALLOW_DARK = 1;
-    const int PAM_FORCE_DARK = 2;
-
-    static void ApplyAppTheme()
-    {
-        try
-        {
-            // AllowDark when system is dark, Default otherwise; FlushMenuThemes drops cached menu themes
-            SetPreferredAppMode(darkMode ? PAM_ALLOW_DARK : PAM_DEFAULT);
-            FlushMenuThemes();
-        }
-        catch (Exception ex) { Log("ApplyAppTheme failed: " + ex.Message); }
-    }
-
-    const byte VK_CONTROL = 0x11;
-    const byte VK_MENU = 0x12;
-    const byte VK_R = 0x52;
-    const uint KEYEVENTF_KEYUP = 0x0002;
-
-    enum IntegrityLevel { Unknown = 0, Low = 4096, Medium = 8192, High = 12288, System = 16384 }
 
     [STAThread]
     static void Main()
@@ -338,8 +74,8 @@ static class Program
             // elevated kill helper: only needs logging + our own integrity level
             if (args[1] == "--elevated-kill" && args.Length > 2)
             {
-                InitLog();
-                selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
+                Logging.InitLog();
+                selfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
                 int pid;
                 if (int.TryParse(args[2], out pid)) RunElevatedKillDirect(pid);
                 return;
@@ -348,10 +84,10 @@ static class Program
             // diagnostic one-shot modes: need full config detection, still early-return
             if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test")
             {
-                InitLog();
-                InitConfig();
-                selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
-                autoRestartEnabled = LoadAutoRestart();
+                Logging.InitLog();
+                Config.InitConfig();
+                selfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
+                Config.AutoRestartEnabled = Config.LoadAutoRestart();
                 if (args[1] == "--smoke") { RunSmoke(); return; }
                 if (args[1] == "--find-window") { RunFindWindow(); return; }
                 if (args[1] == "--menu-test") { RunMenuTest(); return; }
@@ -368,26 +104,26 @@ static class Program
         if (!acquired) return; // another live instance
 
         // only the single primary instance reaches here
-        InitLog();
-        InitConfig();
-        selfIntegrity = GetIntegrity(Process.GetCurrentProcess().Id);
-        autoRestartEnabled = LoadAutoRestart();
+        Logging.InitLog();
+        Config.InitConfig();
+        selfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
+        Config.AutoRestartEnabled = Config.LoadAutoRestart();
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
         Application.ThreadException += delegate(object s, ThreadExceptionEventArgs e)
         {
-            if (e.Exception != null) Log("ThreadException: " + e.Exception);
+            if (e.Exception != null) Logging.Log("ThreadException: " + e.Exception);
         };
         AppDomain.CurrentDomain.UnhandledException += delegate(object s, UnhandledExceptionEventArgs e)
         {
-            if (e.ExceptionObject != null) Log("UnhandledException: " + e.ExceptionObject);
+            if (e.ExceptionObject != null) Logging.Log("UnhandledException: " + e.ExceptionObject);
         };
 
-        darkMode = IsDarkMode();
-        ApplyAppTheme();
-        Log("=== dsh-tray v" + AppVersion + " started (integrity=" + selfIntegrity + ", autoRestart=" + autoRestartEnabled +
+        darkMode = Config.IsDarkMode();
+        Win32.ApplyAppTheme(darkMode);
+        Logging.Log("=== dsh-tray v" + AppVersion + " started (integrity=" + selfIntegrity + ", autoRestart=" + Config.AutoRestartEnabled +
             ", darkMode=" + darkMode + ") ===");
 
         BuildTray();
@@ -412,46 +148,22 @@ static class Program
         if (mutex != null) mutex.ReleaseMutex();
     }
 
-    static void InitLog()
-    {
-        logPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "dsh-tray", "tray.log");
-        try { Directory.CreateDirectory(Path.GetDirectoryName(logPath)); } catch (Exception ex) { Log("InitLog mkdir failed: " + ex.Message); }
-        // one-time migration from the old log directory name
-        try
-        {
-            string oldDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "DSHTray");
-            string newDir = Path.GetDirectoryName(logPath);
-            if (Directory.Exists(oldDir) && oldDir != newDir)
-            {
-                string oldTray = Path.Combine(oldDir, "dshtray.log");
-                string oldHarness = Path.Combine(oldDir, "dsh.log");
-                if (File.Exists(oldTray) && !File.Exists(logPath)) File.Copy(oldTray, logPath);
-                string newHarness = Path.Combine(newDir, "harness.log");
-                if (File.Exists(oldHarness) && !File.Exists(newHarness)) File.Copy(oldHarness, newHarness);
-            }
-        }
-        catch (Exception ex) { Log("InitLog migration failed: " + ex.Message); }
-    }
-
     static void PollTick()
     {
-        bool d = IsDarkMode();
+        bool d = Config.IsDarkMode();
         if (d != darkMode)
         {
             darkMode = d;
-            ApplyAppTheme();
-            Log("theme changed to " + (d ? "dark" : "light"));
+            Win32.ApplyAppTheme(darkMode);
+            Logging.Log("theme changed to " + (d ? "dark" : "light"));
         }
         UpdateStatus();
-        if (autoRestartEnabled && !userStopped && !IsDshUp() &&
+        if (Config.AutoRestartEnabled && !userStopped && !IsDshUp() &&
             Environment.TickCount - lastStartTick > AutoRestartStartCooldownMs &&
             Environment.TickCount - lastAutoRestartTick > AutoRestartRetryCooldownMs)
         {
             lastAutoRestartTick = Environment.TickCount;
-            Log("AutoRestart: harness is down, restarting");
+            Logging.Log("AutoRestart: harness is down, restarting");
             StartDsh();
         }
     }
@@ -462,48 +174,48 @@ static class Program
         string dir = Path.GetDirectoryName(Application.ExecutablePath);
         string report = Path.Combine(dir, "smoke-result.txt");
         var sb = new StringBuilder();
-        sb.AppendLine("node exists=" + File.Exists(NodePath));
-        sb.AppendLine("dsh entry exists=" + File.Exists(DshEntry));
-        sb.AppendLine("chrome exists=" + File.Exists(ChromePath));
+        sb.AppendLine("node exists=" + File.Exists(Config.Current.NodePath));
+        sb.AppendLine("dsh entry exists=" + File.Exists(Config.Current.DshEntry));
+        sb.AppendLine("chrome exists=" + File.Exists(Config.Current.ChromePath));
         sb.AppendLine("self integrity=" + selfIntegrity);
-        sb.AppendLine("autoRestart=" + autoRestartEnabled);
+        sb.AppendLine("autoRestart=" + Config.AutoRestartEnabled);
         sb.AppendLine("ui lang=" + Lang.Code);
         using (Stream rs = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-blue.png"))
             sb.AppendLine("blue icon resource=" + (rs != null));
         using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-dark.png"))
             sb.AppendLine("dark icon resource=" + (rs2 != null));
-        sb.AppendLine("port" + Port + " open=" + PortOpen(Port));
-        int p3080 = FindPidOnPort(Port);
+        sb.AppendLine("port" + Config.Current.Port + " open=" + PortOpen(Config.Current.Port));
+        int p3080 = FindPidOnPort(Config.Current.Port);
         sb.AppendLine("pid on port=" + p3080);
-        if (p3080 > 0) sb.AppendLine("pid integrity=" + GetIntegrity(p3080));
+        if (p3080 > 0) sb.AppendLine("pid integrity=" + Win32.GetIntegrity(p3080));
         sb.AppendLine("SMOKE OK");
-        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Log("RunSmoke write report failed: " + ex.Message); }
+        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunSmoke write report failed: " + ex.Message); }
     }
 
     // ---- headless: list Chrome top-level windows (read-only) ----
     static void RunFindWindow()
     {
         var sb = new StringBuilder();
-        EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
+        Win32.EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
         {
-            if (!IsWindowVisible(hWnd)) return true;
+            if (!Win32.IsWindowVisible(hWnd)) return true;
             uint pid;
-            GetWindowThreadProcessId(hWnd, out pid);
+            Win32.GetWindowThreadProcessId(hWnd, out pid);
             try
             {
                 var p = Process.GetProcessById((int)pid);
-                if (browserNames.Contains(p.ProcessName.ToLowerInvariant()))
+                if (Config.Current.BrowserNames.Contains(p.ProcessName.ToLowerInvariant()))
                 {
                     var t = new StringBuilder(256);
-                    GetWindowText(hWnd, t, 256);
+                    Win32.GetWindowText(hWnd, t, 256);
                     sb.AppendLine("hwnd=" + hWnd + " pid=" + pid + " title=[" + t.ToString() + "]");
                 }
             }
-            catch (Exception ex) { Log("RunFindWindow GetProcessById failed: " + ex.Message); }
+            catch (Exception ex) { Logging.Log("RunFindWindow GetProcessById failed: " + ex.Message); }
             return true;
         }, IntPtr.Zero);
         string report = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "find-window-result.txt");
-        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Log("RunFindWindow write failed: " + ex.Message); }
+        try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunFindWindow write failed: " + ex.Message); }
     }
 
     // ---- headless: build the native menu without showing it ----
@@ -528,24 +240,24 @@ static class Program
             IntPtr hmenu;
             actions = BuildNativeMenu(defs, out hmenu);
             bool ok = hmenu != IntPtr.Zero && actions.Count == 8;
-            if (hmenu != IntPtr.Zero) DestroyMenu(hmenu);
+            if (hmenu != IntPtr.Zero) Win32.DestroyMenu(hmenu);
             File.WriteAllText(Path.Combine(dir, "menu-test.txt"),
                 ok ? "menu-test OK (items=" + actions.Count + ")" : "menu-test FAIL", Encoding.UTF8);
         }
         catch (Exception ex)
         {
-            try { File.WriteAllText(Path.Combine(dir, "menu-test.txt"), "menu-test FAIL: " + ex.Message, Encoding.UTF8); } catch (Exception ex2) { Log("RunMenuTest write failed: " + ex2.Message); }
+            try { File.WriteAllText(Path.Combine(dir, "menu-test.txt"), "menu-test FAIL: " + ex.Message, Encoding.UTF8); } catch (Exception ex2) { Logging.Log("RunMenuTest write failed: " + ex2.Message); }
         }
     }
 
     // ---- runs as elevated helper: kill one pid + its tree ----
     static void RunElevatedKillDirect(int pid)
     {
-        Log("=== elevated kill start: pid=" + pid + " myIntegrity=" + selfIntegrity + " ===");
+        Logging.Log("=== elevated kill start: pid=" + pid + " myIntegrity=" + selfIntegrity + " ===");
         Taskkill(pid);
         TryProcessKill(pid);
         Thread.Sleep(KillSleepMs);
-        Log("elevated kill: pid=" + pid + " alive=" + IsAlive(pid));
+        Logging.Log("elevated kill: pid=" + pid + " alive=" + IsAlive(pid));
     }
 
     static void BuildTray()
@@ -553,7 +265,7 @@ static class Program
         tray = new NotifyIcon();
         tray.Text = Lang.T("tray.title");
         tray.Visible = true;
-        try { whiteIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception ex) { Log("BuildTray extract icon failed: " + ex.Message); }
+        try { whiteIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch (Exception ex) { Logging.Log("BuildTray extract icon failed: " + ex.Message); }
         blueIcon = BuildIconFromResource("whale-blue.png");
         darkIcon = BuildIconFromResource("whale-dark.png");
         tray.Icon = whiteIcon != null ? whiteIcon : SystemIcons.Application;
@@ -599,8 +311,8 @@ static class Program
             defs.Add(new MenuDef(Lang.T("menu.restart"), RestartDsh, up, false));
             defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { if (IsDshUp()) { userStopped = true; StopDsh(); UpdateStatus(); } }, up, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef(Lang.T("menu.autoRestart"), ToggleAutoRestart, true, autoRestartEnabled));
-            defs.Add(new MenuDef(Lang.T("menu.autostart"), ToggleAutostart, true, IsAutostartEnabled()));
+            defs.Add(new MenuDef(Lang.T("menu.autoRestart"), Config.ToggleAutoRestart, true, Config.AutoRestartEnabled));
+            defs.Add(new MenuDef(Lang.T("menu.autostart"), Config.ToggleAutostart, true, Config.IsAutostartEnabled()));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new MenuDef(Lang.T("menu.openLogs"), OpenLog, true, false));
             defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true, false));
@@ -613,14 +325,14 @@ static class Program
                 if (hmenu != IntPtr.Zero)
                 {
                     IntPtr owner = GetMenuOwnerHwnd();
-                    ApplyMenuTheme(owner); // dark/light per system theme
-                    ApplyAppTheme();       // process-wide menu theme (uxtheme)
+                    Win32.ApplyMenuTheme(owner, darkMode); // dark/light per system theme
+                    Win32.ApplyAppTheme(darkMode);         // process-wide menu theme (uxtheme)
                     Point p = Cursor.Position;
                     // owner window must be foreground, else menu won't dismiss on outside click / Esc
-                    keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
-                    keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-                    SetForegroundWindow(owner);
-                    uint cmd = TrackPopupMenuEx(hmenu, TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                    Win32.keybd_event(Win32.VK_MENU, 0, 0, UIntPtr.Zero);
+                    Win32.keybd_event(Win32.VK_MENU, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
+                    Win32.SetForegroundWindow(owner);
+                    uint cmd = Win32.TrackPopupMenuEx(hmenu, Win32.TPM_RIGHTBUTTON | Win32.TPM_RETURNCMD,
                         p.X, p.Y, owner, IntPtr.Zero);
                     if (cmd >= 1 && cmd <= (uint)actions.Count)
                     {
@@ -629,7 +341,7 @@ static class Program
                     }
                 }
             }
-            finally { if (hmenu != IntPtr.Zero) DestroyMenu(hmenu); }
+            finally { if (hmenu != IntPtr.Zero) Win32.DestroyMenu(hmenu); }
         }
         finally { menuShowing = false; }
     }
@@ -637,20 +349,20 @@ static class Program
     static List<Action> BuildNativeMenu(List<MenuDef> defs, out IntPtr hmenu)
     {
         var actions = new List<Action>();
-        hmenu = CreatePopupMenu();
+        hmenu = Win32.CreatePopupMenu();
         if (hmenu == IntPtr.Zero) return actions;
         uint id = 1;
         foreach (MenuDef def in defs)
         {
             if (def.Separator)
             {
-                AppendMenuW(hmenu, MF_SEPARATOR, 0, null);
+                Win32.AppendMenuW(hmenu, Win32.MF_SEPARATOR, 0, null);
                 continue;
             }
-            uint flags = MF_STRING;
-            if (!def.Enabled) flags |= MF_GRAYED;
-            if (def.Checked) flags |= MF_CHECKED;
-            AppendMenuW(hmenu, flags, id, def.Text);
+            uint flags = Win32.MF_STRING;
+            if (!def.Enabled) flags |= Win32.MF_GRAYED;
+            if (def.Checked) flags |= Win32.MF_CHECKED;
+            Win32.AppendMenuW(hmenu, flags, id, def.Text);
             actions.Add(def.Action);
             id++;
         }
@@ -694,28 +406,28 @@ static class Program
     {
         try
         {
-            if (ChromePath != null && File.Exists(ChromePath))
+            if (Config.Current.ChromePath != null && File.Exists(Config.Current.ChromePath))
             {
                 Process.Start(new ProcessStartInfo
                 {
-                    FileName = ChromePath,
-                    Arguments = "--app=" + WebUrl,
+                    FileName = Config.Current.ChromePath,
+                    Arguments = "--app=" + Config.Current.WebUrl,
                     UseShellExecute = false
                 });
             }
             else
             {
                 // no Chrome/Edge found: open in the default browser
-                Process.Start(WebUrl);
-                Log("OpenWindow: no chrome/edge found, opened in default browser");
+                Process.Start(Config.Current.WebUrl);
+                Logging.Log("OpenWindow: no chrome/edge found, opened in default browser");
             }
         }
-        catch (Exception ex) { Log("OpenWindow failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("OpenWindow failed: " + ex.Message); }
     }
 
     static void RestartDsh()
     {
-        Log("=== RestartDsh ===");
+        Logging.Log("=== RestartDsh ===");
         StopDsh();
         UpdateStatus();   // harness is down now -> show stopped (white) icon
         StartDsh();
@@ -728,20 +440,20 @@ static class Program
     {
         userStopped = false;
         lastStartTick = Environment.TickCount;
-        if (NodePath == null || !File.Exists(NodePath)) { Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return; }
-        if (DshEntry == null || !File.Exists(DshEntry)) { Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return; }
-        if (IsDshUp()) { Log("StartDsh: already up, skip"); return; }
+        if (Config.Current.NodePath == null || !File.Exists(Config.Current.NodePath)) { Logging.Log("StartDsh failed: node.exe not found (set 'node' in dshtray.ini)"); return; }
+        if (Config.Current.DshEntry == null || !File.Exists(Config.Current.DshEntry)) { Logging.Log("StartDsh failed: dsh entry not found (set 'dshentry' in dshtray.ini)"); return; }
+        if (IsDshUp()) { Logging.Log("StartDsh: already up, skip"); return; }
         try
         {
             // spawn via cmd with stdout/stderr redirected to a FILE: the harness must not
             // depend on the tray's lifetime (a broken pipe EPIPE kills node in ~1s)
-            string dshLog = Path.Combine(Path.GetDirectoryName(logPath), "harness.log");
-            string cmdArgs = "/c \"\"" + NodePath + "\" \"" + DshEntry + "\" web >> \"" + dshLog + "\" 2>&1\"";
+            string dshLog = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
+            string cmdArgs = "/c \"\"" + Config.Current.NodePath + "\" \"" + Config.Current.DshEntry + "\" web >> \"" + dshLog + "\" 2>&1\"";
             var psi = new ProcessStartInfo
             {
                 FileName = "cmd.exe",
                 Arguments = cmdArgs,
-                WorkingDirectory = DshWorkDir,
+                WorkingDirectory = Config.Current.DshWorkDir,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -749,9 +461,9 @@ static class Program
             proc.Exited += dshProcExited;
             proc.Start();
             dshProc = proc;
-            Log("StartDsh: launched pid=" + dshProc.Id + " (log=" + dshLog + ")");
+            Logging.Log("StartDsh: launched pid=" + dshProc.Id + " (log=" + dshLog + ")");
         }
-        catch (Exception ex) { Log("StartDsh failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("StartDsh failed: " + ex.Message); }
     }
 
     // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
@@ -761,7 +473,7 @@ static class Program
         try
         {
             var p = sender as Process;
-            Log("dsh process exited pid=" + (p != null ? p.Id : -1));
+            Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1));
         }
         catch { }
     }
@@ -771,33 +483,33 @@ static class Program
         bool owned = (dshProc != null && !dshProc.HasExited);
         if (owned)
         {
-            Log("StopDsh: killing owned pid=" + dshProc.Id);
+            Logging.Log("StopDsh: killing owned pid=" + dshProc.Id);
             KillTree(dshProc.Id);
-            try { dshProc.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Log("StopDsh WaitForExit failed: " + ex.Message); }
+            try { dshProc.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
         }
         DisposeDshProc();
         dshProc = null;
 
-        if (PortOpen(Port))
+        if (PortOpen(Config.Current.Port))
         {
-            int pid = FindPidOnPort(Port);
+            int pid = FindPidOnPort(Config.Current.Port);
             if (pid > 0)
             {
                 // only kill the port owner if it is actually node.exe; refusing to kill an
                 // unrelated process that happens to hold our port avoids an identity mix-up
                 if (IsNodeProcess(pid))
                 {
-                    Log("StopDsh: killing external pid=" + pid);
+                    Logging.Log("StopDsh: killing external pid=" + pid);
                     KillTree(pid);
                 }
                 else
                 {
-                    Log("StopDsh: pid=" + pid + " on port " + Port + " is not node, refusing to kill");
+                    Logging.Log("StopDsh: pid=" + pid + " on port " + Config.Current.Port + " is not node, refusing to kill");
                 }
             }
         }
         WaitForPortFree(PortFreeWaitMs);
-        Log("StopDsh: done, port open=" + PortOpen(Port));
+        Logging.Log("StopDsh: done, port open=" + PortOpen(Config.Current.Port));
     }
 
     // detach the Exited handler then dispose the process object; safe to call when null
@@ -813,13 +525,13 @@ static class Program
     // kill a pid + its tree; elevate if the target runs at higher integrity
     static void KillTree(int pid)
     {
-        IntegrityLevel target = GetIntegrity(pid);
-        Log("KillTree: pid=" + pid + " targetIntegrity=" + target + " selfIntegrity=" + selfIntegrity);
+        Win32.IntegrityLevel target = Win32.GetIntegrity(pid);
+        Logging.Log("KillTree: pid=" + pid + " targetIntegrity=" + target + " selfIntegrity=" + selfIntegrity);
 
-        bool needElevate = (target != IntegrityLevel.Unknown) && (target > selfIntegrity);
+        bool needElevate = (target != Win32.IntegrityLevel.Unknown) && (target > selfIntegrity);
         if (needElevate)
         {
-            Log("KillTree: elevating to kill higher-integrity pid=" + pid);
+            Logging.Log("KillTree: elevating to kill higher-integrity pid=" + pid);
             RunElevatedKill(pid);
             return;
         }
@@ -830,7 +542,7 @@ static class Program
         Thread.Sleep(KillSleepMs);
         if (IsAlive(pid))
         {
-            Log("KillTree: pid=" + pid + " still alive after normal kill, elevating");
+            Logging.Log("KillTree: pid=" + pid + " still alive after normal kill, elevating");
             RunElevatedKill(pid);
         }
     }
@@ -847,12 +559,12 @@ static class Program
                 Verb = "runas"
             };
             var p = Process.Start(psi);
-            if (p != null) { p.WaitForExit(ElevatedKillWaitMs); Log("elevated kill helper: exit=" + p.ExitCode); }
-            else Log("elevated kill helper: Process.Start returned null");
+            if (p != null) { p.WaitForExit(ElevatedKillWaitMs); Logging.Log("elevated kill helper: exit=" + p.ExitCode); }
+            else Logging.Log("elevated kill helper: Process.Start returned null");
         }
         catch (Exception ex)
         {
-            Log("elevated kill launch failed (UAC declined?): " + ex.Message);
+            Logging.Log("elevated kill launch failed (UAC declined?): " + ex.Message);
         }
     }
 
@@ -876,14 +588,14 @@ static class Program
                 p.WaitForExit(TaskkillWaitMs);
                 string msg = "taskkill pid=" + pid + " exit=" + p.ExitCode +
                     " out=" + outp.Trim() + " err=" + err.Trim();
-                Log(msg);
+                Logging.Log(msg);
                 return msg;
             }
         }
         catch (Exception ex)
         {
             string msg = "taskkill pid=" + pid + " exception: " + ex.Message;
-            Log(msg);
+            Logging.Log(msg);
             return msg;
         }
     }
@@ -897,12 +609,12 @@ static class Program
                 p.Kill();
                 p.WaitForExit(ProcessWaitExitMs);
             }
-            Log("Process.Kill pid=" + pid + " ok");
+            Logging.Log("Process.Kill pid=" + pid + " ok");
             return true;
         }
         catch (Exception ex)
         {
-            Log("Process.Kill pid=" + pid + " failed: " + ex.Message);
+            Logging.Log("Process.Kill pid=" + pid + " failed: " + ex.Message);
             return false;
         }
     }
@@ -922,23 +634,23 @@ static class Program
     static void WaitForPortFree(int timeoutMs)
     {
         int waited = 0;
-        while (PortOpen(Port) && waited < timeoutMs)
+        while (PortOpen(Config.Current.Port) && waited < timeoutMs)
         {
             Thread.Sleep(PortPollStepMs);
             waited += PortPollStepMs;
         }
-        if (waited >= timeoutMs && PortOpen(Port)) Log("WaitForPortFree: timed out, port still open");
+        if (waited >= timeoutMs && PortOpen(Config.Current.Port)) Logging.Log("WaitForPortFree: timed out, port still open");
     }
 
     static void WaitForPortUp(int timeoutMs)
     {
         int waited = 0;
-        while (!PortOpen(Port) && waited < timeoutMs)
+        while (!PortOpen(Config.Current.Port) && waited < timeoutMs)
         {
             Thread.Sleep(PortPollStepMs);
             waited += PortPollStepMs;
         }
-        Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(Port));
+        Logging.Log("WaitForPortUp: waited=" + waited + "ms up=" + PortOpen(Config.Current.Port));
     }
 
     // find Chrome top-level windows whose title matches the DSH webui and send Ctrl+R
@@ -948,52 +660,52 @@ static class Program
         {
             const string title = "DeepSeek Harness";
             var targets = new List<IntPtr>();
-            EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
+            Win32.EnumWindows(delegate(IntPtr hWnd, IntPtr lParam)
             {
-                if (!IsWindowVisible(hWnd)) return true;
+                if (!Win32.IsWindowVisible(hWnd)) return true;
                 uint pid;
-                GetWindowThreadProcessId(hWnd, out pid);
+                Win32.GetWindowThreadProcessId(hWnd, out pid);
                 try
                 {
                     var p = Process.GetProcessById((int)pid);
-                    if (browserNames.Contains(p.ProcessName.ToLowerInvariant()))
+                    if (Config.Current.BrowserNames.Contains(p.ProcessName.ToLowerInvariant()))
                     {
                         var sb = new StringBuilder(256);
-                        GetWindowText(hWnd, sb, 256);
+                        Win32.GetWindowText(hWnd, sb, 256);
                         if (sb.ToString().IndexOf(title, StringComparison.OrdinalIgnoreCase) >= 0)
                             targets.Add(hWnd);
                     }
                 }
-                catch (Exception ex) { Log("ReloadAppWindow GetProcessById failed: " + ex.Message); }
+                catch (Exception ex) { Logging.Log("ReloadAppWindow GetProcessById failed: " + ex.Message); }
                 return true;
             }, IntPtr.Zero);
 
-            if (targets.Count == 0) { Log("ReloadAppWindow: no matching window"); return; }
+            if (targets.Count == 0) { Logging.Log("ReloadAppWindow: no matching window"); return; }
 
             // dummy ALT press unlocks Windows foreground-switch restrictions
-            keybd_event(VK_MENU, 0, 0, UIntPtr.Zero);
-            keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+            Win32.keybd_event(Win32.VK_MENU, 0, 0, UIntPtr.Zero);
+            Win32.keybd_event(Win32.VK_MENU, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
 
             int sent = 0;
             foreach (IntPtr h in targets)
             {
-                SetForegroundWindow(h);
+                Win32.SetForegroundWindow(h);
                 Thread.Sleep(80);
-                if (GetForegroundWindow() != h)
+                if (Win32.GetForegroundWindow() != h)
                 {
-                    Log("ReloadAppWindow: cannot focus window, skip");
+                    Logging.Log("ReloadAppWindow: cannot focus window, skip");
                     continue;
                 }
-                keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
-                keybd_event(VK_R, 0, 0, UIntPtr.Zero);
-                keybd_event(VK_R, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
-                keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                Win32.keybd_event(Win32.VK_CONTROL, 0, 0, UIntPtr.Zero);
+                Win32.keybd_event(Win32.VK_R, 0, 0, UIntPtr.Zero);
+                Win32.keybd_event(Win32.VK_R, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
+                Win32.keybd_event(Win32.VK_CONTROL, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
                 sent++;
                 Thread.Sleep(150);
             }
-            Log("ReloadAppWindow: reloaded " + sent + "/" + targets.Count + " window(s)");
+            Logging.Log("ReloadAppWindow: reloaded " + sent + "/" + targets.Count + " window(s)");
         }
-        catch (Exception ex) { Log("ReloadAppWindow failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("ReloadAppWindow failed: " + ex.Message); }
     }
 
     // Is the process owning `pid` a node.exe? Used to verify a port listener is really our harness.
@@ -1012,11 +724,11 @@ static class Program
     static bool IsDshUp()
     {
         if (dshProc != null && !dshProc.HasExited) { lastDshUpWarn = null; return true; }
-        if (!PortOpen(Port)) { lastDshUpWarn = null; return false; }
+        if (!PortOpen(Config.Current.Port)) { lastDshUpWarn = null; return false; }
         // port is open but we don't own the listener: only treat it as "up" if the owner is node
-        int pid = FindPidOnPort(Port);
-        if (pid <= 0) { LogDshUpWarnOnce("port " + Port + " open but no listener pid found"); return false; }
-        if (!IsNodeProcess(pid)) { LogDshUpWarnOnce("port " + Port + " owned by non-node pid=" + pid + "; treating as down"); return false; }
+        int pid = FindPidOnPort(Config.Current.Port);
+        if (pid <= 0) { LogDshUpWarnOnce("port " + Config.Current.Port + " open but no listener pid found"); return false; }
+        if (!IsNodeProcess(pid)) { LogDshUpWarnOnce("port " + Config.Current.Port + " owned by non-node pid=" + pid + "; treating as down"); return false; }
         lastDshUpWarn = null;
         return true;
     }
@@ -1028,7 +740,7 @@ static class Program
         if (msg != lastDshUpWarn)
         {
             lastDshUpWarn = msg;
-            Log("IsDshUp: " + msg);
+            Logging.Log("IsDshUp: " + msg);
         }
     }
 
@@ -1093,43 +805,8 @@ static class Program
                 }
             }
         }
-        catch (Exception ex) { Log("FindPidOnPort failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("FindPidOnPort failed: " + ex.Message); }
         return 0;
-    }
-
-    static IntegrityLevel GetIntegrity(int pid)
-    {
-        try
-        {
-            IntPtr h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
-            if (h == IntPtr.Zero) return IntegrityLevel.Unknown;
-            try
-            {
-                IntPtr tok;
-                if (!OpenProcessToken(h, TOKEN_QUERY, out tok)) return IntegrityLevel.Unknown;
-                try
-                {
-                    uint retLen;
-                    GetTokenInformation(tok, TokenIntegrityLevel, IntPtr.Zero, 0, out retLen);
-                    IntPtr buf = Marshal.AllocHGlobal((int)retLen);
-                    try
-                    {
-                        if (!GetTokenInformation(tok, TokenIntegrityLevel, buf, retLen, out retLen))
-                            return IntegrityLevel.Unknown;
-                        IntPtr sid = Marshal.ReadIntPtr(buf);
-                        string s = new SecurityIdentifier(sid).Value;
-                        int dash = s.LastIndexOf('-');
-                        int rid;
-                        if (dash < 0 || !int.TryParse(s.Substring(dash + 1), out rid)) return IntegrityLevel.Unknown;
-                        return (IntegrityLevel)rid;
-                    }
-                    finally { Marshal.FreeHGlobal(buf); }
-                }
-                finally { CloseHandle(tok); }
-            }
-            finally { CloseHandle(h); }
-        }
-        catch { return IntegrityLevel.Unknown; }
     }
 
     static Icon BuildIconFromResource(string resName)
@@ -1151,13 +828,13 @@ static class Program
                         }
                         IntPtr h = bmp.GetHicon();
                         Icon icon = (Icon)Icon.FromHandle(h).Clone();
-                        DestroyIcon(h);
+                        Win32.DestroyIcon(h);
                         return icon;
                     }
                 }
             }
         }
-        catch (Exception ex) { Log("BuildIconFromResource(" + resName + ") failed: " + ex.Message); return null; }
+        catch (Exception ex) { Logging.Log("BuildIconFromResource(" + resName + ") failed: " + ex.Message); return null; }
     }
 
     static void UpdateStatus()
@@ -1171,94 +848,6 @@ static class Program
         tray.Text = up ? Lang.T("tray.running") : Lang.T("tray.stopped");
     }
 
-    static bool IsDarkMode()
-    {
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(
-                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize", false))
-            {
-                if (k == null) return false;
-                object v = k.GetValue("AppsUseLightTheme");
-                return v != null && Convert.ToInt32(v) == 0;
-            }
-        }
-        catch { return false; }
-    }
-
-    static bool IsAutostartEnabled()
-    {
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", false))
-            {
-                if (k == null) return false;
-                return k.GetValue("dsh-tray") != null;
-            }
-        }
-        catch { return false; }
-    }
-
-    static void ToggleAutostart()
-    {
-        bool want = !IsAutostartEnabled();
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run", true))
-            {
-                if (k == null) return;
-                if (want) k.SetValue("dsh-tray", "\"" + Application.ExecutablePath + "\"");
-                else k.DeleteValue("dsh-tray", false);
-            }
-            Log("autostart = " + want);
-        }
-        catch (Exception ex) { Log("autostart toggle failed: " + ex.Message); }
-    }
-
-    static bool LoadAutoRestart()
-    {
-        try
-        {
-            using (var k = Registry.CurrentUser.OpenSubKey(@"Software\dsh-tray", false))
-            {
-                if (k == null)
-                {
-                    // one-time migration from the old key name
-                    using (var old = Registry.CurrentUser.OpenSubKey(@"Software\DSHTray", false))
-                    {
-                        if (old == null) return false;
-                        object ov = old.GetValue("AutoRestart");
-                        bool val = ov != null && Convert.ToInt32(ov) == 1;
-                        if (val) SaveAutoRestart(); // copy into the new key
-                        return val;
-                    }
-                }
-                object v = k.GetValue("AutoRestart");
-                return v != null && Convert.ToInt32(v) == 1;
-            }
-        }
-        catch { return false; }
-    }
-
-    static void SaveAutoRestart()
-    {
-        try
-        {
-            using (var k = Registry.CurrentUser.CreateSubKey(@"Software\dsh-tray"))
-            {
-                k.SetValue("AutoRestart", autoRestartEnabled ? 1 : 0);
-            }
-        }
-        catch (Exception ex) { Log("save autoRestart failed: " + ex.Message); }
-    }
-
-    static void ToggleAutoRestart()
-    {
-        autoRestartEnabled = !autoRestartEnabled;
-        SaveAutoRestart();
-        Log("autoRestart = " + autoRestartEnabled);
-    }
-
     static void OpenLog()
     {
         try
@@ -1266,10 +855,10 @@ static class Program
             Process.Start(new ProcessStartInfo
             {
                 FileName = "notepad.exe",
-                Arguments = "\"" + logPath + "\"",
+                Arguments = "\"" + Logging.LogPath + "\"",
                 UseShellExecute = false
             });
-            string dshLog = Path.Combine(Path.GetDirectoryName(logPath), "harness.log");
+            string dshLog = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
             if (File.Exists(dshLog))
             {
                 Process.Start(new ProcessStartInfo
@@ -1280,38 +869,14 @@ static class Program
                 });
             }
         }
-        catch (Exception ex) { Log("OpenLog failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("OpenLog failed: " + ex.Message); }
     }
 
     static void ExitApp()
     {
         // tray only: harness keeps running (stop it via the Stop menu item)
-        Log("=== ExitApp (tray only, harness kept running) ===");
+        Logging.Log("=== ExitApp (tray only, harness kept running) ===");
         if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
         Application.Exit();
-    }
-
-    static void Log(string msg)
-    {
-        try
-        {
-            lock (logLock)
-            {
-                try
-                {
-                    FileInfo fi = new FileInfo(logPath);
-                    if (fi.Exists && fi.Length > LogMaxBytes)
-                    {
-                        try { File.Copy(logPath, logPath + ".old", true); } catch { }
-                        File.WriteAllText(logPath, "", Encoding.UTF8);
-                    }
-                }
-                catch { }
-                File.AppendAllText(logPath,
-                    DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + msg + Environment.NewLine,
-                    Encoding.UTF8);
-            }
-        }
-        catch { }
     }
 }

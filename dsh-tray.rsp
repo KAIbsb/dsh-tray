@@ -1,0 +1,16 @@
+/nologo
+/t:winexe
+/platform:anycpu
+/optimize+
+/win32icon:assets\whale-white.ico
+/win32manifest:app.manifest
+/resource:assets\whale-blue.png,whale-blue.png
+/resource:assets\whale-dark.png,whale-dark.png
+/r:System.Drawing.dll
+/r:System.Windows.Forms.dll
+/out:dsh-tray.exe
+Program.cs
+Lang.cs
+Win32.cs
+Logging.cs
+Config.cs

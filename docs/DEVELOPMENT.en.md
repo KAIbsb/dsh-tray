@@ -23,17 +23,37 @@ docs/                   English README, this document
 
 ## Build
 
+One-shot local build (run from the repo root):
+
 ```bat
-csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
-  /win32icon:assets\whale-white.ico ^
-  /win32manifest:app.manifest ^
-  /resource:assets\whale-blue.png,whale-blue.png ^
-  /resource:assets\whale-dark.png,whale-dark.png ^
-  /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:dsh-tray.exe Program.cs Lang.cs
+build.bat
 ```
 
-`csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`. The output is a single exe (icon and status icons embedded) with no runtime to install.
+Equivalent to invoking the compiler response file directly:
+
+```bat
+csc @dsh-tray.rsp
+```
+
+Compiler flags and the source-file list are consolidated into `dsh-tray.rsp`, which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the three command copies can't drift apart. Contents of `dsh-tray.rsp`:
+
+```
+/nologo
+/t:winexe
+/platform:anycpu
+/optimize+
+/win32icon:assets\whale-white.ico
+/win32manifest:app.manifest
+/resource:assets\whale-blue.png,whale-blue.png
+/resource:assets\whale-dark.png,whale-dark.png
+/r:System.Drawing.dll
+/r:System.Windows.Forms.dll
+/out:dsh-tray.exe
+Program.cs
+Lang.cs
+```
+
+`csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build.bat` locates it automatically). The output is a single exe (icon and status icons embedded) with no runtime to install.
 
 ## Release process
 

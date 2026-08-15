@@ -23,17 +23,37 @@ docs/                   README 英文版、本文档
 
 ## 构建
 
+本地一键构建(仓库根目录运行):
+
 ```bat
-csc.exe /nologo /t:winexe /platform:anycpu /optimize+ ^
-  /win32icon:assets\whale-white.ico ^
-  /win32manifest:app.manifest ^
-  /resource:assets\whale-blue.png,whale-blue.png ^
-  /resource:assets\whale-dark.png,whale-dark.png ^
-  /r:System.Drawing.dll /r:System.Windows.Forms.dll ^
-  /out:dsh-tray.exe Program.cs Lang.cs
+build.bat
 ```
 
-`csc.exe` 位于 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`。产物为单文件 exe(图标与状态图标均内嵌),无需安装任何运行时。
+等价于直接调用编译器响应文件:
+
+```bat
+csc @dsh-tray.rsp
+```
+
+编译参数与源文件清单统一收敛在 `dsh-tray.rsp` 中,`build.bat` 与 CI(`.github/workflows/release.yml`)均以它作为单一来源,避免三处命令漂移。`dsh-tray.rsp` 内容如下:
+
+```
+/nologo
+/t:winexe
+/platform:anycpu
+/optimize+
+/win32icon:assets\whale-white.ico
+/win32manifest:app.manifest
+/resource:assets\whale-blue.png,whale-blue.png
+/resource:assets\whale-dark.png,whale-dark.png
+/r:System.Drawing.dll
+/r:System.Windows.Forms.dll
+/out:dsh-tray.exe
+Program.cs
+Lang.cs
+```
+
+`csc.exe` 位于 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`(`build.bat` 已自动定位)。产物为单文件 exe(图标与状态图标均内嵌),无需安装任何运行时。
 
 ## 发布流程
 
