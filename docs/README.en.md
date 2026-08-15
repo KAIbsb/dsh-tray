@@ -134,7 +134,7 @@ Autostart records the exe's path at the time it was enabled. After moving the ex
 
 **Does dsh-tray access the network?**
 
-No. It only works locally: starting/stopping local processes and reading/writing the registry and logs. The only external call is launching your local browser when you choose "Open Window".
+On startup it silently checks GitHub for the latest version once in the background (only once; works offline, fails silently, no popup); otherwise it does not access the network. Beyond that it only works locally: starting/stopping local processes, reading/writing the registry and logs, and launching your local browser when you choose "Open Window".
 
 ## License
 

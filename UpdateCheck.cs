@@ -93,7 +93,7 @@ static class UpdateCheck
         int[] l = ParseParts(latest);
         int[] c = ParseParts(current);
         if (l == null || c == null) return false;
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 4; i++)
         {
             int lv = i < l.Length ? l[i] : 0;
             int cv = i < c.Length ? c[i] : 0;
@@ -107,7 +107,7 @@ static class UpdateCheck
     {
         if (string.IsNullOrEmpty(s)) return null;
         string[] segs = s.Trim().Split('.');
-        var nums = new int[Math.Min(segs.Length, 3)];
+        var nums = new int[Math.Min(segs.Length, 4)];
         for (int i = 0; i < nums.Length; i++)
         {
             string seg = segs[i].Trim();

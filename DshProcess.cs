@@ -123,7 +123,7 @@ class DshProcess
             string cmdArgs = "/c \"\"" + cfg.NodePath + "\" \"" + cfg.DshEntry + "\" web >> \"" + dshLog + "\" 2>&1\"";
             var psi = new ProcessStartInfo
             {
-                FileName = "cmd.exe",
+                FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
                 Arguments = cmdArgs,
                 WorkingDirectory = cfg.DshWorkDir,
                 UseShellExecute = false,
@@ -337,7 +337,7 @@ class DshProcess
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "taskkill",
+                FileName = Path.Combine(Environment.SystemDirectory, "taskkill.exe"),
                 Arguments = "/PID " + pid + " /T /F",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -346,9 +346,17 @@ class DshProcess
             };
             using (var p = Process.Start(psi))
             {
-                string outp = p.StandardOutput.ReadToEnd();
-                string err = p.StandardError.ReadToEnd();
-                p.WaitForExit(TaskkillWaitMs);
+                // start async reads first (drains both pipes concurrently) to avoid the classic
+                // full-pipe deadlock that hit "ReadToEnd then WaitForExit" on a chatty child
+                var readOut = p.StandardOutput.ReadToEndAsync();
+                var readErr = p.StandardError.ReadToEndAsync();
+                if (!p.WaitForExit(TaskkillWaitMs))
+                {
+                    try { p.Kill(); } catch { }
+                    Logging.Log("taskkill pid=" + pid + " timed out, killed");
+                }
+                string outp = readOut.Result;
+                string err = readErr.Result;
                 string msg = "taskkill pid=" + pid + " exit=" + p.ExitCode +
                     " out=" + outp.Trim() + " err=" + err.Trim();
                 Logging.Log(msg);
@@ -449,7 +457,7 @@ class DshProcess
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "netstat",
+                FileName = Path.Combine(Environment.SystemDirectory, "netstat.exe"),
                 Arguments = "-ano -p tcp",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -457,8 +465,13 @@ class DshProcess
             };
             using (var p = Process.Start(psi))
             {
-                string output = p.StandardOutput.ReadToEnd();
-                p.WaitForExit(NetstatWaitMs);
+                var readOut = p.StandardOutput.ReadToEndAsync();
+                if (!p.WaitForExit(NetstatWaitMs))
+                {
+                    try { p.Kill(); } catch { }
+                    Logging.Log("FindPidOnPort netstat timed out, killed");
+                }
+                string output = readOut.Result;
                 string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
                 foreach (string line in lines)
                 {

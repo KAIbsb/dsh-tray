@@ -16,8 +16,6 @@ static class Lang
         zh["menu.start"] = "启动";
         zh["menu.restart"] = "重启";
         zh["menu.stop"] = "停止";
-        zh["menu.autoRestart"] = "崩溃自动重启";
-        zh["menu.autostart"] = "开机自启";
         zh["menu.settings"] = "设置…";
         zh["menu.downloadUpdate"] = "下载更新 v{0}";
         zh["menu.exit"] = "退出";
@@ -48,8 +46,6 @@ static class Lang
         en["menu.start"] = "Start";
         en["menu.restart"] = "Restart";
         en["menu.stop"] = "Stop";
-        en["menu.autoRestart"] = "Auto-restart on Crash";
-        en["menu.autostart"] = "Start with Windows";
         en["menu.settings"] = "Settings…";
         en["menu.downloadUpdate"] = "Download Update v{0}";
         en["menu.exit"] = "Exit";

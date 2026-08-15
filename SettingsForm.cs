@@ -38,6 +38,7 @@ class SettingsForm : Form
     string langCode;
     bool applyingLang;
     readonly bool? themeOverride;
+    Icon ownedIcon;
 
     public SettingsForm(DshProcess process, string version, bool? themeOverride = null)
     {
@@ -54,11 +55,18 @@ class SettingsForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(560, 366);
         AutoScaleMode = AutoScaleMode.Dpi;
-        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        try { ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        if (ownedIcon != null) Icon = ownedIcon;
 
         BuildControls();
         ApplyTheme();
         ApplyLang();
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && ownedIcon != null) { ownedIcon.Dispose(); ownedIcon = null; }
+        base.Dispose(disposing);
     }
 
     void BuildControls()
@@ -303,7 +311,7 @@ class SettingsForm : Form
                     if (s != null) using (var r = new StreamReader(s)) template = r.ReadToEnd();
                 File.WriteAllText(ini, template ?? "", Encoding.UTF8);
             }
-            Process.Start(new ProcessStartInfo { FileName = "notepad.exe", Arguments = "\"" + ini + "\"", UseShellExecute = false });
+            Process.Start(new ProcessStartInfo { FileName = Path.Combine(Environment.SystemDirectory, "notepad.exe"), Arguments = "\"" + ini + "\"", UseShellExecute = false });
         }
         catch (Exception ex) { Logging.Log("SettingsForm open config failed: " + ex.Message); }
     }
@@ -314,7 +322,7 @@ class SettingsForm : Form
         {
             string dir = Path.GetDirectoryName(Logging.LogPath);
             if (!string.IsNullOrEmpty(dir) && Directory.Exists(dir))
-                Process.Start("explorer.exe", "\"" + dir + "\"");
+                Process.Start(Path.Combine(Environment.SystemDirectory, "explorer.exe"), "\"" + dir + "\"");
         }
         catch (Exception ex) { Logging.Log("SettingsForm open logs failed: " + ex.Message); }
     }

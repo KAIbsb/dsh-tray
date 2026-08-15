@@ -28,6 +28,8 @@ static class TrayMenu
     static bool flashing;
     static DshProcess dp;
     static string appVersion;
+    static bool lastUpState;
+    static bool lastDarkState;
 
     // theme flag exposed so Program can log it on startup (set during Init before the tray builds)
     public static bool DarkMode { get { return darkMode; } }
@@ -39,6 +41,10 @@ static class TrayMenu
         appVersion = version;
         darkMode = Config.IsDarkMode();
         Win32.ApplyAppTheme(darkMode);
+        // seed the change-detection cache with a forced mismatch so the first UpdateStatus
+        // always applies the real icon/text (BuildTray only sets a provisional white icon)
+        lastDarkState = !darkMode;
+        lastUpState = false;
         Logging.Log("=== dsh-tray v" + version + " started (integrity=" + dp.SelfIntegrity +
             ", autoRestart=" + dp.AutoRestartEnabled + ", darkMode=" + darkMode + ") ===");
         BuildTray();
@@ -64,6 +70,7 @@ static class TrayMenu
         if (blueIcon != null) blueIcon.Dispose();
         if (darkIcon != null) darkIcon.Dispose();
         if (tray != null) { tray.Visible = false; tray.Dispose(); tray = null; }
+        if (menuOwner != null) { menuOwner.Dispose(); menuOwner = null; }
     }
 
     static void PollTick()
@@ -303,6 +310,11 @@ static class TrayMenu
             if (flashTimer != null) flashTimer.Stop();
         }
         bool up = dp.IsUp;
+        // skip when nothing changed (avoid churning the icon/text every poll tick)
+        if (up == lastUpState && darkMode == lastDarkState)
+            return;
+        lastUpState = up;
+        lastDarkState = darkMode;
         Icon use = null;
         if (up) use = blueIcon;
         else use = darkMode ? whiteIcon : darkIcon;

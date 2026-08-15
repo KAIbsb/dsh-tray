@@ -81,7 +81,13 @@ static class Config
                     case "chrome": Current.ChromePath = val; break;
                     case "url":
                         Current.WebUrl = val;
-                        try { Current.Port = new Uri(val).Port; } catch (Exception ex) { Logging.Log("ini url parse failed: " + ex.Message); }
+                        try { Current.Port = new Uri(val).Port; }
+                        catch (Exception ex)
+                        {
+                            // roll back to the default so WebUrl and Port stay consistent
+                            Current.WebUrl = "http://127.0.0.1:3080";
+                            Logging.Log("ini url parse failed, using default: " + ex.Message);
+                        }
                         break;
                     case "lang":
                         Current.IniLang = val;
@@ -140,7 +146,9 @@ static class Config
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "cmd.exe",
+                FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+                // npm has no fixed System32 location; it must be resolved on PATH, so keep the
+                // bare name and let cmd.exe locate it
                 Arguments = "/c npm root -g",
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -148,8 +156,14 @@ static class Config
             };
             using (var p = Process.Start(psi))
             {
-                string root = p.StandardOutput.ReadToEnd().Trim();
-                p.WaitForExit(NpmRootWaitMs);
+                // async read first to avoid a full-pipe deadlock; then wait (or kill on timeout)
+                var readOut = p.StandardOutput.ReadToEndAsync();
+                if (!p.WaitForExit(NpmRootWaitMs))
+                {
+                    try { p.Kill(); } catch { }
+                    Logging.Log("DetectDshEntry npm root -g timed out, killed");
+                }
+                string root = readOut.Result.Trim();
                 if (root.Length > 0 && Directory.Exists(root))
                 {
                     string entry3 = Path.Combine(root, "@deepseek-ai", "dsh", "lib", "bin.js");
