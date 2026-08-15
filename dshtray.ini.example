@@ -1,8 +1,8 @@
 ; ==================== dsh-tray 配置文件 ====================
 ; 本文件是托盘的唯一配置。修改保存后,下次启动托盘生效。
-; 删除或注释某行 = 该项使用默认值/自动检测。
+; 留空 = 自动检测 / 默认值;填值 = 按所填使用。
 ; This file is the tray's single configuration. Changes apply on the next start.
-; Delete or comment a line to use the default / auto-detection for that item.
+; Empty = auto-detect / default; a value = use it.
 ; ==========================================================
 
 ; Harness 网页地址(必写;端口由 url 推导,默认 3080)
@@ -21,9 +21,18 @@ autorestart=true
 ; Start with Windows: true / false (also written to the Windows startup)
 autostart=false
 
-; 以下留空或删除 = 自动检测
-; Empty or remove a line below to auto-detect:
-;node=
-;dshentry=
-;dshworkdir=
-;chrome=
+; Node.js 可执行文件路径(留空 = 自动检测)
+; Path to node.exe (empty = auto-detect)
+node=
+
+; dsh 入口脚本路径(留空 = 自动检测)
+; Path to the dsh entry script (empty = auto-detect)
+dshentry=
+
+; dsh 工作目录(留空 = 自动推断)
+; Working directory for dsh (empty = inferred)
+dshworkdir=
+
+; Chromium 系浏览器可执行文件(留空 = 自动查找 Chrome / Edge)
+; Chromium-family browser exe (empty = auto-detect Chrome / Edge)
+chrome=

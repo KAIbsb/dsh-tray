@@ -91,18 +91,16 @@ Exit            ← exits the tray only; the harness keeps running (use Stop to 
 ```ini
 # dshtray.ini
 url = http://127.0.0.1:3080   # required; port derived from the URL (change it for a custom port)
-lang = zh                    # UI language zh/en; empty = follow system
-autorestart = true           # auto-restart on crash: true/false
-autostart = false            # start with Windows: true/false (also written to the startup key)
-
-# empty or remove a line below = auto-detect
-;node = C:\path\to\node.exe
-;dshentry = C:\path\to\dsh\lib\bin.js
-;dshworkdir = C:\path\to\dsh
-;chrome = C:\path\to\chrome.exe
+lang =                        # UI language zh/en; empty = follow system
+autorestart = true            # auto-restart on crash: true/false
+autostart = false             # start with Windows: true/false (also written to the startup key)
+node =                        # path to node.exe; empty = auto-detect
+dshentry =                    # path to the dsh entry script; empty = auto-detect
+dshworkdir =                  # dsh working directory; empty = inferred
+chrome =                      # Chromium-family browser path; empty = auto-detect Chrome/Edge
 ```
 
-Delete or comment a line to use the default / auto-detection for that item (node / dsh entry / browser resolve via PATH, common install paths, npm global directory). `url` is the only port setting (the port is derived from it). `autostart` is the single source for start-with-Windows; the Windows startup key is only a mirror (synced from the file at startup).
+An empty line means the default / auto-detection for that item (node / dsh entry / browser resolve via PATH, common install paths, npm global directory); deleting or commenting a line works the same. `url` is the only port setting (the port is derived from it). `autostart` is the single source for start-with-Windows; the Windows startup key is only a mirror (synced from the file at startup).
 
 ## Logs
 

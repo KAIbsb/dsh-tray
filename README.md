@@ -92,18 +92,16 @@ harness 的 Web UI 在 `http://127.0.0.1:3080`。不想让它混进浏览器标�
 ```ini
 # dshtray.ini
 url = http://127.0.0.1:3080   # 必写;端口由 url 推导,改端口直接改这里
-lang = zh                    # 界面语言 zh/en,留空 = 跟随系统
-autorestart = true           # 崩溃自动重启 true/false
-autostart = false            # 开机自启 true/false(同时写入 Windows 启动项)
-
-# 以下留空或删除 = 自动检测
-;node = C:\path\to\node.exe
-;dshentry = C:\path\to\dsh\lib\bin.js
-;dshworkdir = C:\path\to\dsh
-;chrome = C:\path\to\chrome.exe
+lang =                        # 界面语言 zh/en,留空 = 跟随系统
+autorestart = true            # 崩溃自动重启 true/false
+autostart = false             # 开机自启 true/false(同时写入 Windows 启动项)
+node =                        # Node.js 路径,留空 = 自动检测
+dshentry =                    # dsh 入口脚本路径,留空 = 自动检测
+dshworkdir =                  # dsh 工作目录,留空 = 自动推断
+chrome =                      # Chromium 系浏览器路径,留空 = 自动查找 Chrome/Edge
 ```
 
-删除或注释某行 = 该项使用默认值 / 自动检测(Node/Dsh 入口/浏览器走 PATH、常见安装路径、npm 全局目录)。`url` 是唯一的端口配置项(端口由其自动推导)。`autostart` 是开机自启的唯一来源,Windows 启动项只是它的镜像(启动时按文件同步)。
+留空某行 = 该项使用默认值 / 自动检测(Node/Dsh 入口/浏览器走 PATH、常见安装路径、npm 全局目录);删除或注释某行同样生效。`url` 是唯一的端口配置项(端口由其自动推导)。`autostart` 是开机自启的唯一来源,Windows 启动项只是它的镜像(启动时按文件同步)。
 
 ## 日志
 
