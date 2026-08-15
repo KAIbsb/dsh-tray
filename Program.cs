@@ -145,23 +145,19 @@ static class Program
         string dir = Path.GetDirectoryName(Application.ExecutablePath);
         try
         {
-            var defs = new List<TrayMenu.MenuDef>();
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.open"), delegate { }, true, false));
-            defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.start"), delegate { }, false, false));
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.restart"), delegate { }, true, false));
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.stop"), delegate { }, true, false));
-            defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.settings"), delegate { }, true, false));
-            defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.exit"), delegate { }, true, false));
+            // build the REAL menu via the shared factory (same defs ShowTrayMenu uses), then
+            // count only the executable items (separators carry no action) — asserted from the
+            // real defs, never a hardcoded number.
+            var defs = TrayMenu.BuildMenuDefs(DshState.Stopped);
+            var execCount = 0;
+            foreach (var def in defs) if (!def.Separator) execCount++;
             List<Action> actions;
             IntPtr hmenu;
             actions = TrayMenu.BuildNativeMenu(defs, out hmenu);
-            bool ok = hmenu != IntPtr.Zero && actions.Count == 6;
+            bool ok = hmenu != IntPtr.Zero && actions.Count == execCount && execCount > 0;
             if (hmenu != IntPtr.Zero) Win32.DestroyMenu(hmenu);
             File.WriteAllText(Path.Combine(dir, "menu-test.txt"),
-                ok ? "menu-test OK (items=" + actions.Count + ")" : "menu-test FAIL", Encoding.UTF8);
+                ok ? "menu-test OK (items=" + actions.Count + ", defs=" + defs.Count + ")" : "menu-test FAIL", Encoding.UTF8);
         }
         catch (Exception ex)
         {

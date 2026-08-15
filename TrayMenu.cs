@@ -109,22 +109,18 @@ static class TrayMenu
         };
     }
 
-    // left click: ensure the harness is up, then open the window
-    static async void StartAndOpen()
+    // left click: ensure the harness is up, then open the window (RunAsync handles logging/status)
+    static void StartAndOpen()
     {
-        try
+        RunAsync(async () =>
         {
             DshState st = dp.State;
             if (st == DshState.Starting || st == DshState.Stopping)
                 return; // transition in flight: don't open a window against a half-started state
             if (st == DshState.Stopped)
-            {
                 await dp.StartAsync();
-                UpdateStatus();
-            }
             WindowMgr.OpenWindow();
-        }
-        catch (Exception ex) { Logging.Log("StartAndOpen failed: " + ex.Message); }
+        }, "start");
     }
 
     static void ShowTrayMenu()
@@ -133,34 +129,7 @@ static class TrayMenu
         menuShowing = true;
         try
         {
-            DshState st = dp.State;
-            var defs = new List<MenuDef>();
-            defs.Add(new MenuDef(Lang.T("menu.open"), WindowMgr.OpenWindow, true, false));
-            defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef(Lang.T("menu.start"), async delegate
-            {
-                try { await dp.StartAsync(); UpdateStatus(); }
-                catch (Exception ex) { Logging.Log("start failed: " + ex.Message); UpdateStatus(); }
-            }, st == DshState.Stopped, false));
-            defs.Add(new MenuDef(Lang.T("menu.restart"), async delegate
-            {
-                try { await dp.RestartAsync(); WindowMgr.ReloadAppWindow(); UpdateStatus(); }
-                catch (Exception ex) { Logging.Log("restart failed: " + ex.Message); UpdateStatus(); }
-            }, st == DshState.Running, false));
-            defs.Add(new MenuDef(Lang.T("menu.stop"), async delegate
-            {
-                try { await dp.StopAsync(); UpdateStatus(); }
-                catch (Exception ex) { Logging.Log("stop failed: " + ex.Message); UpdateStatus(); }
-            }, st == DshState.Running || st == DshState.Starting, false));
-            defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { OpenSettings(); }, true, false));
-            defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            if (UpdateCheck.IsNewerAvailable)
-            {
-                defs.Add(new MenuDef(string.Format(Lang.T("menu.downloadUpdate"), UpdateCheck.LatestVersion),
-                    delegate { OpenUpdatePage(); }, true, false));
-            }
-            defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true, false));
+            var defs = BuildMenuDefs(dp.State);
 
             List<Action> actions;
             IntPtr hmenu;
@@ -189,6 +158,43 @@ static class TrayMenu
             finally { if (hmenu != IntPtr.Zero) Win32.DestroyMenu(hmenu); }
         }
         finally { menuShowing = false; }
+    }
+
+    // the tray's real menu definition, built against the current state. Shared with the headless
+    // --menu-test so the test always asserts against the actual menu (no hand-copied list to drift).
+    // The enabled flag per item reflects the current state; dynamic items (update download)
+    // survive because each call re-reads UpdateCheck.IsNewerAvailable.
+    public static List<MenuDef> BuildMenuDefs(DshState st)
+    {
+        var defs = new List<MenuDef>();
+        defs.Add(new MenuDef(Lang.T("menu.open"), WindowMgr.OpenWindow, true, false));
+        defs.Add(new MenuDef(null, null, true, false) { Separator = true });
+        defs.Add(new MenuDef(Lang.T("menu.start"), delegate { RunAsync(async () => { await dp.StartAsync(); }, "start"); }, st == DshState.Stopped, false));
+        defs.Add(new MenuDef(Lang.T("menu.restart"), delegate { RunAsync(async () => { await dp.RestartAsync(); WindowMgr.ReloadAppWindow(); }, "restart"); }, st == DshState.Running, false));
+        defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { RunAsync(async () => { await dp.StopAsync(); }, "stop"); }, st == DshState.Running || st == DshState.Starting, false));
+        defs.Add(new MenuDef(null, null, true, false) { Separator = true });
+        defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { OpenSettings(); }, true, false));
+        defs.Add(new MenuDef(null, null, true, false) { Separator = true });
+        if (UpdateCheck.IsNewerAvailable)
+        {
+            defs.Add(new MenuDef(string.Format(Lang.T("menu.downloadUpdate"), UpdateCheck.LatestVersion),
+                delegate { OpenUpdatePage(); }, true, false));
+        }
+        defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true, false));
+        return defs;
+    }
+
+    // single wrapper for every fire-and-forget async menu/click action: catch + log + settle the
+    // tray status. Removes the duplicated bare-async-void try/catch from each handler. The action
+    // must not touch the UI thread except through UpdateStatus (invoked here on every exit path).
+    static async void RunAsync(Func<Task> action, string name)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex) { Logging.Log(name + " failed: " + ex.Message); }
+        finally { UpdateStatus(); }
     }
 
     public static List<Action> BuildNativeMenu(List<MenuDef> defs, out IntPtr hmenu)

@@ -28,6 +28,11 @@ static class Config
 {
     public static readonly AppConfig Current = new AppConfig();
 
+    // in-memory mirror of dshtray.ini (set once in InitConfig after the ini is ensured). All
+    // readers prefer it over re-reading the file each call; every writer refreshes it after
+    // IniFile.Save so the live value and the file stay in sync for the process lifetime.
+    static List<string> iniLines;
+
     public static string IniPath
     {
         get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini"); }
@@ -36,6 +41,7 @@ static class Config
     public static void InitConfig()
     {
         EnsureIni();
+        iniLines = IniFile.Load(IniPath);   // single read; everything below parses from this mirror
         LoadIniConfig();
         SyncAutostartFromIni();
         Lang.Init(Current.IniLang);
@@ -86,7 +92,7 @@ static class Config
     {
         try
         {
-            var lines = IniFile.Load(IniPath);
+            var lines = iniLines;
 
             string url = IniFile.Get(lines, "url");
             if (!string.IsNullOrEmpty(url))
@@ -214,11 +220,25 @@ static class Config
 
     // ---- auto-restart: ini is authoritative; registry is only a legacy migration source ----
 
+    // the cached ini mirror when present, else a fresh file read (covers callers that run before
+    // InitConfig, e.g. headless probes). Writers call SyncIniLines after Save to keep the same set.
+    static List<string> IniLines()
+    {
+        if (iniLines == null) iniLines = IniFile.Load(IniPath);
+        return iniLines;
+    }
+
+    // re-read the file into the mirror so subsequent reads see what was just written
+    static void SyncIniLines()
+    {
+        iniLines = IniFile.Load(IniPath);
+    }
+
     public static bool LoadAutoRestart()
     {
         try
         {
-            var lines = IniFile.Load(IniPath);
+            var lines = IniLines();
             string v = IniFile.Get(lines, "autorestart");
             if (v != null)
             {
@@ -234,6 +254,7 @@ static class Config
                     bool val = Convert.ToInt32(rv) == 1;
                     IniFile.Set(lines, "autorestart", val ? "true" : "false");
                     IniFile.Save(IniPath, lines);
+                    SyncIniLines();
                     return val;
                 }
             }
@@ -246,9 +267,10 @@ static class Config
     {
         try
         {
-            var lines = IniFile.Load(IniPath);
+            var lines = IniLines();
             IniFile.Set(lines, "autorestart", enabled ? "true" : "false");
             IniFile.Save(IniPath, lines);
+            SyncIniLines();
         }
         catch (Exception ex) { Logging.Log("save autoRestart failed: " + ex.Message); }
     }
@@ -259,7 +281,7 @@ static class Config
     {
         try
         {
-            var lines = IniFile.Load(IniPath);
+            var lines = IniLines();
             string v = IniFile.Get(lines, "autostart");
             if (v != null)
             {
@@ -279,9 +301,10 @@ static class Config
     {
         try
         {
-            var lines = IniFile.Load(IniPath);
+            var lines = IniLines();
             IniFile.Set(lines, "autostart", want ? "true" : "false");
             IniFile.Save(IniPath, lines);
+            SyncIniLines();
             WriteRunKey(want);
             Logging.Log("autostart = " + want);
         }
@@ -298,7 +321,7 @@ static class Config
     {
         try
         {
-            var lines = IniFile.Load(IniPath);
+            var lines = IniLines();
             string v = IniFile.Get(lines, "autostart");
             if (v == null) return;
             bool? b = ParseBool(v);
@@ -344,9 +367,11 @@ static class Config
         try
         {
             EnsureIni();
-            var lines = IniFile.Load(IniPath);
+            if (iniLines == null) iniLines = IniFile.Load(IniPath);
+            var lines = iniLines;
             IniFile.Set(lines, "lang", lang);
             IniFile.Save(IniPath, lines);
+            SyncIniLines();
         }
         catch (Exception ex) { Logging.Log("SaveLang failed: " + ex.Message); }
     }

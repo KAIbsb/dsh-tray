@@ -35,6 +35,7 @@ static class Lang
         zh["settings.updateAvailable"] = "发现新版 v{0}";
         zh["settings.download"] = "下载";
         zh["settings.version"] = "版本 {0}";
+        zh["settings.currentUrl"] = "当前地址 {0}";
         zh["settings.repo"] = "仓库";
         zh["settings.openConfig"] = "打开配置文件";
         zh["settings.openLogs"] = "打开日志文件夹";
@@ -65,6 +66,7 @@ static class Lang
         en["settings.updateAvailable"] = "Update available: v{0}";
         en["settings.download"] = "Download";
         en["settings.version"] = "Version {0}";
+        en["settings.currentUrl"] = "Current URL {0}";
         en["settings.repo"] = "Repository";
         en["settings.openConfig"] = "Open config file";
         en["settings.openLogs"] = "Open logs folder";

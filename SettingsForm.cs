@@ -28,6 +28,7 @@ class SettingsForm : Form
     Label lblResult;
     LinkLabel lnkDownload;
     Label lblVersion;
+    Label lblCurrentUrl;
     LinkLabel lnkRepo;
     Button btnOpenConfig;
     Button btnOpenLogs;
@@ -52,7 +53,7 @@ class SettingsForm : Form
         MaximizeBox = false;
         ShowInTaskbar = true;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(560, 366);
+        ClientSize = new Size(560, 392);
         AutoScaleMode = AutoScaleMode.Dpi;
         try { ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         if (ownedIcon != null) Icon = ownedIcon;
@@ -97,22 +98,25 @@ class SettingsForm : Form
         lblVersion = new Label { Left = 16, Top = 184, Width = 528, Height = 20 };
         lblVersion.AutoSize = false;
         lblVersion.TextAlign = ContentAlignment.MiddleLeft;
-        lnkRepo = new LinkLabel { Left = 16, Top = 212, Width = 528, Height = 20 };
+        lblCurrentUrl = new Label { Left = 16, Top = 206, Width = 528, Height = 22 };
+        lblCurrentUrl.AutoSize = false;
+        lblCurrentUrl.TextAlign = ContentAlignment.MiddleLeft;
+        lnkRepo = new LinkLabel { Left = 16, Top = 232, Width = 528, Height = 20 };
         lnkRepo.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnCheck = new Button { Left = 16, Top = 240, Width = 150, Height = 28 };
+        btnCheck = new Button { Left = 16, Top = 264, Width = 150, Height = 28 };
         btnCheck.Click += delegate { OnCheckUpdate(); };
-        lblResult = new Label { Left = 174, Top = 244, Width = 260, Height = 22 };
+        lblResult = new Label { Left = 174, Top = 268, Width = 260, Height = 22 };
         lblResult.AutoSize = false;
         lblResult.TextAlign = ContentAlignment.MiddleLeft;
-        lnkDownload = new LinkLabel { Left = 182, Top = 243, AutoSize = true, Visible = false };
+        lnkDownload = new LinkLabel { Left = 182, Top = 267, AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnOpenConfig = new Button { Left = 16, Top = 272, Width = 256, Height = 28 };
+        btnOpenConfig = new Button { Left = 16, Top = 296, Width = 256, Height = 28 };
         btnOpenConfig.Click += delegate { OpenConfig(); };
-        btnOpenLogs = new Button { Left = 288, Top = 272, Width = 256, Height = 28 };
+        btnOpenLogs = new Button { Left = 288, Top = 296, Width = 256, Height = 28 };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
 
         // ---- close button (bottom-right) ----
-        btnClose = new Button { Left = 454, Top = 318, Width = 90, Height = 30 };
+        btnClose = new Button { Left = 454, Top = 342, Width = 90, Height = 30 };
         btnClose.Click += delegate { Close(); };
 
         Controls.Add(lblSecGeneral);
@@ -126,6 +130,7 @@ class SettingsForm : Form
         Controls.Add(lblSecAbout);
         Controls.Add(lineAbout);
         Controls.Add(lblVersion);
+        Controls.Add(lblCurrentUrl);
         Controls.Add(lnkRepo);
         Controls.Add(btnCheck);
         Controls.Add(lblResult);
@@ -162,6 +167,7 @@ class SettingsForm : Form
         lblLanguage.ForeColor = fore;
         lblResult.ForeColor = fore;
         lblVersion.ForeColor = dim;
+        lblCurrentUrl.ForeColor = dim;
 
         StyleRadio(radioAuto, fore);
         StyleRadio(radioZh, fore);
@@ -228,6 +234,7 @@ class SettingsForm : Form
         chkAutostart.Text = Lang.T("settings.autostart");
         btnCheck.Text = Lang.T("settings.checkUpdate");
         lblVersion.Text = string.Format(Lang.T("settings.version"), appVersion);
+        lblCurrentUrl.Text = string.Format(Lang.T("settings.currentUrl"), Config.Current.WebUrl);
         lnkRepo.Text = Lang.T("settings.repo");
         lnkDownload.Text = Lang.T("settings.download");
         btnOpenConfig.Text = Lang.T("settings.openConfig");

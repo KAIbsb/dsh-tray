@@ -116,6 +116,18 @@ class DshProcess
         psi.EnvironmentVariables["DSH_TRAY_NODE"] = cfg.NodePath;
         psi.EnvironmentVariables["DSH_TRAY_ENTRY"] = cfg.DshEntry;
         psi.EnvironmentVariables["DSH_TRAY_LOG"] = dshLog;
+        // a value containing % would be double-expanded when cmd references the variable inside
+        // BuildLaunchCmd's quotes; it is almost always a misconfigured path. Warn only (never
+        // block): the path may still be valid if the % pair is a legit cmd variable.
+        WarnIfContainsPercent("DSH_TRAY_NODE", cfg.NodePath);
+        WarnIfContainsPercent("DSH_TRAY_ENTRY", cfg.DshEntry);
+        WarnIfContainsPercent("DSH_TRAY_LOG", dshLog);
+    }
+
+    static void WarnIfContainsPercent(string name, string value)
+    {
+        if (value == null || value.IndexOf('%') < 0) return;
+        Logging.Log("path contains %, cmd will double-expand: " + name + "=" + value);
     }
 
     // result of the core spawn
@@ -141,11 +153,19 @@ class DshProcess
             // spawn via cmd with stdout/stderr redirected to a FILE: the harness must not
             // depend on the tray's lifetime (a broken pipe EPIPE kills node in ~1s)
             string dshLog = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
+            // the log dir may have been deleted since init (or be otherwise absent); guarantee
+            // it exists so cmd's `>>` redirection never fails the whole launch line
+            try { Directory.CreateDirectory(Path.GetDirectoryName(dshLog)); } catch (Exception ex) { Logging.Log("StartCore: ensure harness.log dir failed: " + ex.Message); }
+            // WorkingDirectory fallback: prefer the configured work dir; when unset, fall back
+            // to the dsh entry's directory; only if both are empty do we leave it as the current dir
+            string workDir = cfg.DshWorkDir;
+            if (string.IsNullOrEmpty(workDir) && !string.IsNullOrEmpty(cfg.DshEntry))
+                workDir = Path.GetDirectoryName(cfg.DshEntry);
             var psi = new ProcessStartInfo
             {
                 FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
                 Arguments = BuildLaunchCmd(),
-                WorkingDirectory = cfg.DshWorkDir,
+                WorkingDirectory = workDir,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
@@ -427,7 +447,11 @@ class DshProcess
         }
     }
 
-    void RunElevatedKill(int pid)
+    // Spawn an elevated helper to kill one pid + tree. Returns whether the helper launched and
+    // exited with code 0. A UAC decline, a launch failure, a non-zero exit, or a wait timeout all
+    // return false so the caller can log an explicit "stop may be incomplete" signal — the caller
+    // (StopCore) never changes its adoption logic; it only gets a clearer failure trace.
+    bool RunElevatedKill(int pid)
     {
         // one-time nonce: the elevated helper verifies it plus the dsh entry before killing,
         // so a stray/non-originated --elevated-kill invocation is rejected (fail-closed)
@@ -456,12 +480,17 @@ class DshProcess
             {
                 p.WaitForExit(ElevatedKillWaitMs);
                 Logging.Log("elevated kill helper: exit=" + p.ExitCode);
+                if (p.ExitCode == 0) return true;
+                Logging.Log("elevated kill failed/refused, stop may be incomplete (helper exit=" + p.ExitCode + ")");
+                return false;
             }
-            else Logging.Log("elevated kill helper: Process.Start returned null");
+            Logging.Log("elevated kill helper: Process.Start returned null");
+            return false;
         }
         catch (Exception ex)
         {
             Logging.Log("elevated kill failed: " + ex.Message);
+            return false;
         }
         finally
         {
