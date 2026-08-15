@@ -26,6 +26,7 @@ static class TrayMenu
     static System.Windows.Forms.Timer pollTimer;
     static DshProcess dp;
     static string appVersion;
+    static SettingsForm openSettings;
     static bool lastUpState;             // change-detection: only re-set the icon when the state flips
     static bool lastDarkState;
 
@@ -152,7 +153,7 @@ static class TrayMenu
                 catch (Exception ex) { Logging.Log("stop failed: " + ex.Message); UpdateStatus(); }
             }, st == DshState.Running || st == DshState.Starting, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { new SettingsForm(dp, appVersion).ShowDialog(); }, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { OpenSettings(); }, true, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
             if (UpdateCheck.IsNewerAvailable)
             {
@@ -293,6 +294,25 @@ static class TrayMenu
     {
         try { Process.Start(UpdateCheck.ReleasesPageUrl); }
         catch (Exception ex) { Logging.Log("OpenUpdatePage failed: " + ex.Message); }
+    }
+
+    // single settings instance: re-focus an open dialog instead of stacking nested modals
+    static void OpenSettings()
+    {
+        try
+        {
+            if (openSettings == null || openSettings.IsDisposed)
+            {
+                openSettings = new SettingsForm(dp, appVersion);
+                openSettings.FormClosed += delegate { openSettings = null; };
+                openSettings.ShowDialog();
+            }
+            else
+            {
+                openSettings.Activate();
+            }
+        }
+        catch (Exception ex) { Logging.Log("OpenSettings failed: " + ex.Message); }
     }
 
     static void ExitApp()

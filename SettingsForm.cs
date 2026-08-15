@@ -50,7 +50,7 @@ class SettingsForm : Form
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;
         MaximizeBox = false;
-        ShowInTaskbar = false;
+        ShowInTaskbar = true;
         StartPosition = FormStartPosition.CenterScreen;
         ClientSize = new Size(560, 366);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -104,7 +104,7 @@ class SettingsForm : Form
         lblResult = new Label { Left = 174, Top = 244, Width = 260, Height = 22 };
         lblResult.AutoSize = false;
         lblResult.TextAlign = ContentAlignment.MiddleLeft;
-        lnkDownload = new LinkLabel { Left = 410, Top = 243, AutoSize = true, Visible = false };
+        lnkDownload = new LinkLabel { Left = 182, Top = 243, AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
         btnOpenConfig = new Button { Left = 16, Top = 272, Width = 256, Height = 28 };
         btnOpenConfig.Click += delegate { OpenConfig(); };
@@ -277,6 +277,9 @@ class SettingsForm : Form
                     if (newer)
                     {
                         lblResult.Text = string.Format(Lang.T("settings.updateAvailable"), UpdateCheck.LatestVersion);
+                        // re-position the download link right after the result text (which may
+                        // have grown) so they never overlap or clip the link's text
+                        lnkDownload.Left = lblResult.Right + 8;
                         lnkDownload.Visible = true;
                     }
                     else
