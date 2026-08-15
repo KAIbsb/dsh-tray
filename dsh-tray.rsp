@@ -17,3 +17,5 @@ Config.cs
 DshProcess.cs
 WindowMgr.cs
 TrayMenu.cs
+UpdateCheck.cs
+SettingsForm.cs

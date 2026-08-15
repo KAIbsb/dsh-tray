@@ -24,17 +24,19 @@ static class TrayMenu
     static int lastLeftClickTick = -1000;
     static System.Windows.Forms.Timer pollTimer;
     static DshProcess dp;
+    static string appVersion;
 
     // theme flag exposed so Program can log it on startup (set during Init before the tray builds)
     public static bool DarkMode { get { return darkMode; } }
 
     // dependency injection: Program creates the DshProcess instance and hands it in
-    public static void Init(DshProcess process, string appVersion)
+    public static void Init(DshProcess process, string version)
     {
         dp = process;
+        appVersion = version;
         darkMode = Config.IsDarkMode();
         Win32.ApplyAppTheme(darkMode);
-        Logging.Log("=== dsh-tray v" + appVersion + " started (integrity=" + dp.SelfIntegrity +
+        Logging.Log("=== dsh-tray v" + version + " started (integrity=" + dp.SelfIntegrity +
             ", autoRestart=" + dp.AutoRestartEnabled + ", darkMode=" + darkMode + ") ===");
         BuildTray();
         dp.UserStopped = false;
@@ -44,6 +46,8 @@ static class TrayMenu
         pollTimer.Interval = PollIntervalMs;
         pollTimer.Tick += delegate { PollTick(); };
         pollTimer.Start();
+        // silent one-shot GitHub update check; result is read on the next menu build
+        UpdateCheck.CheckOnce(appVersion);
     }
 
     public static void Dispose()
@@ -119,10 +123,14 @@ static class TrayMenu
             defs.Add(new MenuDef(Lang.T("menu.restart"), delegate { dp.RestartDsh(); WindowMgr.ReloadAppWindow(); UpdateStatus(); }, up, false));
             defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { if (dp.IsUp) { dp.UserStopped = true; dp.StopDsh(); UpdateStatus(); } }, up, false));
             defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new MenuDef(Lang.T("menu.autoRestart"), dp.ToggleAutoRestart, true, dp.AutoRestartEnabled));
-            defs.Add(new MenuDef(Lang.T("menu.autostart"), Config.ToggleAutostart, true, Config.IsAutostartEnabled()));
-            defs.Add(new MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new MenuDef(Lang.T("menu.openLogs"), OpenLog, true, false));
+            defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { new SettingsForm(dp, appVersion).ShowDialog(); }, true, false));
+            defs.Add(new MenuDef(null, null, true, false) { Separator = true });
+            if (UpdateCheck.IsNewerAvailable)
+            {
+                defs.Add(new MenuDef(string.Format(Lang.T("menu.downloadUpdate"), UpdateCheck.LatestVersion),
+                    delegate { OpenUpdatePage(); }, true, false));
+            }
             defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true, false));
 
             List<Action> actions;
@@ -271,6 +279,13 @@ static class TrayMenu
             }
         }
         catch (Exception ex) { Logging.Log("OpenLog failed: " + ex.Message); }
+    }
+
+    // open the GitHub releases page for the "download update" menu item
+    static void OpenUpdatePage()
+    {
+        try { Process.Start(UpdateCheck.ReleasesPageUrl); }
+        catch (Exception ex) { Logging.Log("OpenUpdatePage failed: " + ex.Message); }
     }
 
     static void ExitApp()

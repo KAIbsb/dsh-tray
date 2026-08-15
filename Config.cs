@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using Microsoft.Win32;
 using System.Windows.Forms;
 
@@ -259,5 +260,35 @@ static class Config
             }
         }
         catch { return false; }
+    }
+
+    // write (or clear) the "lang" key in dshtray.ini. Empty lang clears the override so
+    // language falls back to the system default on next launch. Failure is logged and swallowed.
+    public static void SaveLang(string lang)
+    {
+        try
+        {
+            string ini = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini");
+            var lines = new List<string>();
+            if (File.Exists(ini)) lines.AddRange(File.ReadAllLines(ini));
+            bool replaced = false;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string trimmed = lines[i].Trim();
+                if (trimmed.Length == 0 || trimmed.StartsWith("#") || trimmed.StartsWith(";")) continue;
+                int eq = trimmed.IndexOf('=');
+                if (eq <= 0) continue;
+                string key = trimmed.Substring(0, eq).Trim().ToLowerInvariant();
+                if (key == "lang")
+                {
+                    lines[i] = "lang=" + lang;
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) lines.Add("lang=" + lang);
+            File.WriteAllLines(ini, lines.ToArray(), Encoding.UTF8);
+        }
+        catch (Exception ex) { Logging.Log("SaveLang failed: " + ex.Message); }
     }
 }

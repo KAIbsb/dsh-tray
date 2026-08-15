@@ -9,8 +9,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 [assembly: AssemblyProduct("dsh-tray")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
 
@@ -140,15 +140,14 @@ static class Program
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.restart"), delegate { }, true, false));
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.stop"), delegate { }, true, false));
             defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.autoRestart"), delegate { }, true, true));
-            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.autostart"), delegate { }, true, false));
-            defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.openLogs"), delegate { }, true, false));
+            defs.Add(new TrayMenu.MenuDef(Lang.T("menu.settings"), delegate { }, true, false));
+            defs.Add(new TrayMenu.MenuDef(null, null, true, false) { Separator = true });
             defs.Add(new TrayMenu.MenuDef(Lang.T("menu.exit"), delegate { }, true, false));
             List<Action> actions;
             IntPtr hmenu;
             actions = TrayMenu.BuildNativeMenu(defs, out hmenu);
-            bool ok = hmenu != IntPtr.Zero && actions.Count == 8;
+            bool ok = hmenu != IntPtr.Zero && actions.Count == 7;
             if (hmenu != IntPtr.Zero) Win32.DestroyMenu(hmenu);
             File.WriteAllText(Path.Combine(dir, "menu-test.txt"),
                 ok ? "menu-test OK (items=" + actions.Count + ")" : "menu-test FAIL", Encoding.UTF8);
