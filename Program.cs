@@ -187,17 +187,22 @@ static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         var dp = new DshProcess(Config.Current);
-        RenderSettingsPreview(dp, false, "settings-preview-light.png");
-        RenderSettingsPreview(dp, true, "settings-preview-dark.png");
+        // 100% (native DeviceDpi)
+        RenderSettingsPreview(dp, false, "settings-preview-light.png", null);
+        RenderSettingsPreview(dp, true, "settings-preview-dark.png", null);
+        // simulated 125% DPI (layout sizing scaled by 1.25; independent names so they don't
+        // overwrite the 100% images) — for catching high-DPI text clipping headless
+        RenderSettingsPreview(dp, false, "dpi125-preview-light.png", 1.25f);
+        RenderSettingsPreview(dp, true, "dpi125-preview-dark.png", 1.25f);
     }
 
-    static void RenderSettingsPreview(DshProcess dp, bool dark, string fileName)
+    static void RenderSettingsPreview(DshProcess dp, bool dark, string fileName, float? dpiOverride)
     {
         string path = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), fileName);
         SettingsForm form = null;
         try
         {
-            form = new SettingsForm(dp, AppVersion, dark);
+            form = new SettingsForm(dp, AppVersion, dark, dpiOverride);
             // show offscreen so every child control handle is created and paint state is
             // fully initialized, then WM_PRINT renders nonclient+client+children into the HDC
             form.StartPosition = FormStartPosition.Manual;

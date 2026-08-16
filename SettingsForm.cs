@@ -46,13 +46,24 @@ class SettingsForm : Form
     bool applyingLang;
     readonly bool? themeOverride;
     Icon ownedIcon;
+    readonly float dpi;
 
-    public SettingsForm(DshProcess process, string version, bool? themeOverride = null)
+    // fixed 100%-DPI row heights (general / sep / lang / theme / restart / autostart / aboutheader
+    // / sep / version / url / repo / update / file / close). Absolute so text never outgrows a row
+    // on high-DPI once scaled; used both for the root RowStyles and the explicit ClientSize height.
+    static readonly int[] BaseRowH = { 24, 14, 26, 26, 26, 26, 24, 14, 32, 32, 32, 42, 34, 38 };
+
+    public SettingsForm(DshProcess process, string version, bool? themeOverride = null, float? dpiOverride = null)
     {
         dp = process;
         appVersion = version;
         this.themeOverride = themeOverride;
         langCode = Config.Current.IniLang ?? "";
+        // TableLayoutPanel Absolute row/column sizes do NOT follow AutoScaleMode.Dpi, so on
+        // 125%/150% the fixed pixel heights are too small and text clips vertically. We scale every
+        // layout pixel by the device-DPI factor ourselves (dpiOverride lets --ui-preview simulate a
+        // scaled monitor at 100%).
+        dpi = dpiOverride ?? ((float)DeviceDpi / 96f);
 
         Text = "dsh-tray";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -60,9 +71,17 @@ class SettingsForm : Form
         MaximizeBox = false;
         ShowInTaskbar = true;
         StartPosition = FormStartPosition.CenterScreen;
-        ClientSize = new Size(560, 426);
-        // size to the grid content (rows are fixed-height); the width stays at 560 via the
-        // percent column. Keep a sane floor for the FixedDialog on very small scales.
+        // in the simulated-DPI preview the device is still 100%, so AutoScaleMode.Dpi won't grow the
+        // font like a real high-DPI screen would — scale it ourselves so the 125% image is faithful
+        // (font and layout both grow by dpi). On a real device dpiOverride is null and AutoScaleMode
+        // handles the font.
+        if (dpiOverride.HasValue)
+        {
+            Font = new Font(Font.FontFamily, Font.Size * dpiOverride.Value, Font.Style);
+        }
+        ClientSize = new Size(Sp(560), Sp(426));
+        // size to the grid content (rows are fixed-height); width ends up ~560 via the percent
+        // column. Keep a sane floor for the FixedDialog on very small scales.
         AutoSize = true;
         AutoSizeMode = AutoSizeMode.GrowAndShrink;
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -73,6 +92,9 @@ class SettingsForm : Form
         ApplyTheme();
         ApplyLang();
     }
+
+    // scale a design-time (100% DPI) pixel value to the current device DPI
+    int Sp(int px) { return Math.Max(1, (int)Math.Round(px * dpi)); }
 
     protected override void Dispose(bool disposing)
     {
@@ -86,13 +108,13 @@ class SettingsForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(14),
+            Padding = new Padding(Sp(14)),
             ColumnCount = 2,
             RowCount = 0,
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104)); // label column
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Sp(104))); // label column
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));  // content column
         this.root = root;
 
@@ -101,28 +123,28 @@ class SettingsForm : Form
         lblSecGeneral.Font = new Font(lblSecGeneral.Font, FontStyle.Bold);
         lineGeneral = new Panel { Height = 1, Dock = DockStyle.Fill };
 
-        lblLanguage = new Label { AutoSize = false, Width = 90, Height = 22, TextAlign = ContentAlignment.MiddleLeft };
+        lblLanguage = new Label { AutoSize = false, Width = Sp(90), Height = Sp(22), TextAlign = ContentAlignment.MiddleLeft };
         // each radio group gets its OWN Panel parent: WinForms RadioButtons group by parent
         // container, so language (3) and theme (3) radios must NOT share the Form directly or
         // they form ONE mutual-exclusion group (the bug). Radio positions are panel-relative.
-        langPanel = new Panel { Dock = DockStyle.Fill, Height = 26, BorderStyle = BorderStyle.None };
-        radioAuto = new RadioButton { Left = 0, Top = 2, AutoSize = true };
+        langPanel = new Panel { Dock = DockStyle.Fill, Height = Sp(26), BorderStyle = BorderStyle.None };
+        radioAuto = new RadioButton { Left = 0, Top = Sp(2), AutoSize = true };
         radioAuto.CheckedChanged += delegate { OnLangChanged(radioAuto); };
-        radioZh = new RadioButton { Left = 0, Top = 2, AutoSize = true };
+        radioZh = new RadioButton { Left = 0, Top = Sp(2), AutoSize = true };
         radioZh.CheckedChanged += delegate { OnLangChanged(radioZh); };
-        radioEn = new RadioButton { Left = 0, Top = 2, AutoSize = true };
+        radioEn = new RadioButton { Left = 0, Top = Sp(2), AutoSize = true };
         radioEn.CheckedChanged += delegate { OnLangChanged(radioEn); };
         langPanel.Controls.Add(radioAuto);
         langPanel.Controls.Add(radioZh);
         langPanel.Controls.Add(radioEn);
 
-        lblTheme = new Label { AutoSize = false, Width = 90, Height = 22, TextAlign = ContentAlignment.MiddleLeft };
-        themePanel = new Panel { Dock = DockStyle.Fill, Height = 26, BorderStyle = BorderStyle.None };
-        radioThemeAuto = new RadioButton { Left = 0, Top = 2, AutoSize = true };
+        lblTheme = new Label { AutoSize = false, Width = Sp(90), Height = Sp(22), TextAlign = ContentAlignment.MiddleLeft };
+        themePanel = new Panel { Dock = DockStyle.Fill, Height = Sp(26), BorderStyle = BorderStyle.None };
+        radioThemeAuto = new RadioButton { Left = 0, Top = Sp(2), AutoSize = true };
         radioThemeAuto.CheckedChanged += delegate { OnThemeChanged(radioThemeAuto); };
-        radioThemeLight = new RadioButton { Left = 0, Top = 2, AutoSize = true };
+        radioThemeLight = new RadioButton { Left = 0, Top = Sp(2), AutoSize = true };
         radioThemeLight.CheckedChanged += delegate { OnThemeChanged(radioThemeLight); };
-        radioThemeDark = new RadioButton { Left = 0, Top = 2, AutoSize = true };
+        radioThemeDark = new RadioButton { Left = 0, Top = Sp(2), AutoSize = true };
         radioThemeDark.CheckedChanged += delegate { OnThemeChanged(radioThemeDark); };
         themePanel.Controls.Add(radioThemeAuto);
         themePanel.Controls.Add(radioThemeLight);
@@ -139,13 +161,16 @@ class SettingsForm : Form
         lblSecAbout = new Label { AutoSize = true };
         lblSecAbout.Font = new Font(lblSecAbout.Font, FontStyle.Bold);
         lineAbout = new Panel { Height = 1, Dock = DockStyle.Fill };
-        lblVersion = new Label { AutoSize = false, Width = 500, Height = 20, TextAlign = ContentAlignment.MiddleLeft };
-        lblCurrentUrl = new Label { AutoSize = false, Width = 500, Height = 22, TextAlign = ContentAlignment.MiddleLeft };
-        lnkRepo = new LinkLabel { AutoSize = false, Width = 500, Height = 20 };
+        lblVersion = new Label { AutoSize = false, Width = Sp(500), Height = Sp(25), TextAlign = ContentAlignment.MiddleLeft };
+        lblCurrentUrl = new Label { AutoSize = false, Width = Sp(500), Height = Sp(26), TextAlign = ContentAlignment.MiddleLeft };
+        lnkRepo = new LinkLabel { AutoSize = false, Width = Sp(500), Height = Sp(25) };
         lnkRepo.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
 
         // check-update row: check / result / download-link / auto-update all on ONE grid row so
-        // they never collide when "new version found" reveals the last two.
+        // they never collide when "new version found" reveals the last two. The nested panel stays
+        // AutoSize (so it doesn't inflate its Absolute parent row); its internal row is a FIXED
+        // scaled height so btnCheck (Dock=Fill) stretches tall enough that "Check for updates" text
+        // never clips at high DPI.
         var updateRow = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -153,7 +178,7 @@ class SettingsForm : Form
             AutoSize = true,
             AutoSizeMode = AutoSizeMode.GrowAndShrink
         };
-        updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190)); // btnCheck (wide enough for en "Check for updates")
+        updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Sp(190))); // btnCheck (wide enough for en "Check for updates")
         updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));      // lblResult
         updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));      // lnkDownload
         updateRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));      // btnAutoUpdate
@@ -162,34 +187,35 @@ class SettingsForm : Form
         lblResult = new Label { AutoSize = true, TextAlign = ContentAlignment.MiddleLeft };
         lnkDownload = new LinkLabel { AutoSize = true, Visible = false };
         lnkDownload.LinkClicked += delegate { OpenUrl(UpdateCheck.ReleasesPageUrl); };
-        btnAutoUpdate = new Button { AutoSize = true, Height = 28, Visible = false };
+        btnAutoUpdate = new Button { AutoSize = true, Height = Sp(28), Visible = false };
         btnAutoUpdate.Click += delegate { OnAutoUpdate(); };
         updateRow.Controls.Add(btnCheck, 0, 0);
         updateRow.Controls.Add(lblResult, 1, 0);
         updateRow.Controls.Add(lnkDownload, 2, 0);
         updateRow.Controls.Add(btnAutoUpdate, 3, 0);
-        updateRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        // fixed internal row height drives btnCheck's fill height (>= textH at every DPI)
+        updateRow.RowStyles.Add(new RowStyle(SizeType.Absolute, Sp(34)));
         this.updateRow = updateRow;
 
         // config / logs buttons on one row
         var fileRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         fileRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         fileRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        btnOpenConfig = new Button { AutoSize = false, Dock = DockStyle.Fill, Height = 28 }; // Dock=Fill spans its cell width
+        btnOpenConfig = new Button { AutoSize = false, Dock = DockStyle.Fill, Height = Sp(28) }; // Dock=Fill spans its cell width
         btnOpenConfig.Click += delegate { OpenConfig(); };
-        btnOpenLogs = new Button { AutoSize = false, Dock = DockStyle.Fill, Height = 28 };
+        btnOpenLogs = new Button { AutoSize = false, Dock = DockStyle.Fill, Height = Sp(28) };
         btnOpenLogs.Click += delegate { OpenLogsFolder(); };
         fileRow.Controls.Add(btnOpenConfig, 0, 0);
         fileRow.Controls.Add(btnOpenLogs, 1, 0);
-        fileRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        fileRow.RowStyles.Add(new RowStyle(SizeType.Absolute, Sp(30)));
         this.fileRow = fileRow;
 
         // bottom row: right-aligned close button
         var closeRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink };
         closeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        btnClose = new Button { AutoSize = false, Width = 90, Height = 30, Anchor = AnchorStyles.Right };
+        btnClose = new Button { AutoSize = false, Width = Sp(90), Height = Sp(30), Anchor = AnchorStyles.Right };
         // anchor Right inside the cell keeps it flush right; add right margin via cell padding
-        btnClose.Margin = new Padding(0, 4, 0, 0);
+        btnClose.Margin = new Padding(0, Sp(4), 0, 0);
         btnClose.Click += delegate { Close(); };
         closeRow.Controls.Add(btnClose, 0, 0);
         closeRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -214,10 +240,9 @@ class SettingsForm : Form
         // explicit fixed row heights: content rows get their intended control height (auto-sizing
         // them is fragile here — both the fixed-size labels and the Dock=Fill panels report no
         // preferred size, which would collapse the whole row). Dock=Fill on children then fills each
-        // row predictably.
-        int[] rowH = { 24, 14, 26, 26, 26, 26, 24, 14, 24, 26, 24, 36, 34, 38 };
+        // row predictably. All heights are DPI-scaled so taller text at 125%/150% is not clipped.
         for (int i = 0; i < root.RowCount; i++)
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, rowH[i]));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, Sp(BaseRowH[i])));
 
         Controls.Add(root);
 
@@ -231,26 +256,26 @@ class SettingsForm : Form
     TableLayoutPanel closeRow;
 
     // add a 2-column-wide (label+content) row
-    static void AddRow(TableLayoutPanel grid, Control label, Control content, int row)
+    void AddRow(TableLayoutPanel grid, Control label, Control content, int row)
     {
-        label.Margin = new Padding(0, 4, 6, 4);
+        label.Margin = new Padding(0, Sp(4), Sp(6), Sp(4));
         grid.Controls.Add(label, 0, row);
         grid.Controls.Add(content, 1, row);
     }
 
     // add a row that spans BOTH columns
-    static void AddSpan(TableLayoutPanel grid, Control c, int row, int colSpan = 2, int rowSpan = 1)
+    void AddSpan(TableLayoutPanel grid, Control c, int row, int colSpan = 2, int rowSpan = 1)
     {
-        c.Margin = new Padding(0, 4, 0, 4);
+        c.Margin = new Padding(0, Sp(4), 0, Sp(4));
         grid.Controls.Add(c, 0, row);
         grid.SetColumnSpan(c, colSpan);
         grid.SetRowSpan(c, rowSpan);
     }
 
     // separator row: 1px line set to fill its cell
-    static void AddSeparatorRow(TableLayoutPanel grid, Control sep, int row)
+    void AddSeparatorRow(TableLayoutPanel grid, Control sep, int row)
     {
-        sep.Margin = new Padding(0, 6, 0, 6);
+        sep.Margin = new Padding(0, Sp(6), 0, Sp(6));
         grid.Controls.Add(sep, 0, row);
         grid.SetColumnSpan(sep, 2);
     }
@@ -354,8 +379,8 @@ class SettingsForm : Form
         radioZh.Text = Lang.T("settings.langZh");
         radioEn.Text = Lang.T("settings.langEn");
         // dynamic equal spacing: recompute Left after text widths settle (AutoSize)
-        radioZh.Left = radioAuto.Right + 16;
-        radioEn.Left = radioZh.Right + 16;
+        radioZh.Left = radioAuto.Right + Sp(16);
+        radioEn.Left = radioZh.Right + Sp(16);
         radioAuto.Checked = (langCode == "");
         radioZh.Checked = (langCode == "zh");
         radioEn.Checked = (langCode == "en");
@@ -364,8 +389,8 @@ class SettingsForm : Form
         radioThemeLight.Text = Lang.T("settings.themeLight");
         radioThemeDark.Text = Lang.T("settings.themeDark");
         // dynamic equal spacing: recompute Left after text widths settle (AutoSize)
-        radioThemeLight.Left = radioThemeAuto.Right + 16;
-        radioThemeDark.Left = radioThemeLight.Right + 16;
+        radioThemeLight.Left = radioThemeAuto.Right + Sp(16);
+        radioThemeDark.Left = radioThemeLight.Right + Sp(16);
         string theme = (Config.ThemeOverride ?? "").Trim().ToLowerInvariant();
         radioThemeAuto.Checked = (theme.Length == 0);
         radioThemeLight.Checked = (theme == "light");

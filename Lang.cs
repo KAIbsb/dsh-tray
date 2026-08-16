@@ -19,7 +19,7 @@ static class Lang
         zh["menu.settings"] = "设置…";
         zh["menu.downloadUpdate"] = "下载更新 v{0}";
         zh["menu.exit"] = "退出";
-        zh["tray.title"] = "DSH Harness 托盘管家";
+        zh["tray.title"] = "dsh-tray";
         zh["tray.running"] = "DSH Harness — 运行中";
         zh["tray.stopped"] = "DSH Harness — 已停止";
         zh["settings.title"] = "设置";
@@ -62,7 +62,7 @@ static class Lang
         en["menu.settings"] = "Settings…";
         en["menu.downloadUpdate"] = "Download Update v{0}";
         en["menu.exit"] = "Exit";
-        en["tray.title"] = "DSH Harness Tray Manager";
+        en["tray.title"] = "dsh-tray";
         en["tray.running"] = "DSH Harness — Running";
         en["tray.stopped"] = "DSH Harness — Stopped";
         en["settings.title"] = "Settings";
