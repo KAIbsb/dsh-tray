@@ -58,6 +58,18 @@ static class Config
             " | url=" + Current.WebUrl);
     }
 
+    // Minimal config for the elevated-kill helper. Unlike InitConfig, this must NOT create the ini
+    // or write the autostart registry mirror: the helper runs with an elevated token and should only
+    // resolve the dsh entry it needs for token comparison.
+    public static void InitElevatedKillConfig()
+    {
+        iniLines = IniFile.Load(IniPath);
+        LoadIniConfig();
+        if (string.IsNullOrEmpty(Current.DshEntry) || !File.Exists(Current.DshEntry))
+            Current.DshEntry = DetectDshEntry();
+        Logging.Log("ElevatedKill config: dshEntry=" + (Current.DshEntry ?? "NOT FOUND"));
+    }
+
     // create the ini from the embedded template when missing; failure is logged and swallowed
     public static void EnsureIni()
     {

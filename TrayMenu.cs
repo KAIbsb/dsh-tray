@@ -336,6 +336,12 @@ static class TrayMenu
         catch (Exception ex) { Logging.Log("OpenUpdatePage failed: " + ex.Message); }
     }
 
+    // theme change from the settings dialog: refresh tray icon + process-wide uxtheme
+    static void OnSettingsThemeChanged()
+    {
+        ApplyThemeNow();
+    }
+
     // single settings instance: re-focus an open dialog instead of stacking nested modals
     static void OpenSettings()
     {
@@ -344,7 +350,12 @@ static class TrayMenu
             if (openSettings == null || openSettings.IsDisposed)
             {
                 openSettings = new SettingsForm(dp, appVersion);
-                openSettings.FormClosed += delegate { openSettings = null; };
+                openSettings.ThemeChanged += OnSettingsThemeChanged;
+                openSettings.FormClosed += delegate
+                {
+                    openSettings.ThemeChanged -= OnSettingsThemeChanged;
+                    openSettings = null;
+                };
                 openSettings.ShowDialog();
             }
             else

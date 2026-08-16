@@ -38,6 +38,26 @@ static class Logging
         catch (Exception ex) { Log("InitLog migration failed: " + ex.Message); }
     }
 
+    // Rotate an arbitrary log file when it exceeds the 5MB cap. Used for harness.log, which is
+    // written by the child process via file redirection and is not covered by Log()'s own rotation.
+    // Best-effort: if the file is locked (harness currently running) the failure is logged and
+    // the next start will retry.
+    public static void RotateIfLarge(string path)
+    {
+        if (string.IsNullOrEmpty(path)) return;
+        try
+        {
+            var fi = new FileInfo(path);
+            if (fi.Exists && fi.Length > LogMaxBytes)
+            {
+                File.Copy(path, path + ".old", true);
+                File.WriteAllText(path, "", Encoding.UTF8);
+                Log("rotated " + path + " (over 5MB)");
+            }
+        }
+        catch (Exception ex) { Log("rotate failed " + path + ": " + ex.Message); }
+    }
+
     public static void Log(string msg)
     {
         // InitLog() has not run yet: never write nor throw (keeps pre-config paths safe)

@@ -55,7 +55,7 @@ cmd /c .devtools\build-dev.bat
 
 ## Release process
 
-1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.1.2.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
+1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.1.3.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
 2. `git tag vX.Y.Z` and `git push --tags`
 3. GitHub Actions compiles, generates the SHA256, and creates a Release with the exe and checksum attached
 
@@ -83,7 +83,7 @@ cmd /c .devtools\build-dev.bat
 | `--ui-preview` | Renders light/dark screenshots of the settings window (dev use), writes `settings-preview-*.png`; a temporary `dshtray.ini` `lang` key controls the language |
 | `--elevated-kill <pid>` | Kills a process tree as administrator (invoked automatically on demand) |
 
-Logs: `%LOCALAPPDATA%\dsh-tray\tray.log` (tray operations) is auto-rotated past 5 MB; `harness.log` (harness output) is independent of the tray lifetime and is not auto-rotated, so it may grow over long runs.
+Logs: `%LOCALAPPDATA%\dsh-tray\tray.log` (tray operations) is auto-rotated past 5 MB; `harness.log` (harness output) is independent of the tray lifetime and is rotated to `harness.log.old` before each harness start when it exceeds 5 MB (no forced rotation while the harness is running).
 
 ## Icons & assets
 

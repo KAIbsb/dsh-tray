@@ -156,6 +156,9 @@ class DshProcess
             // the log dir may have been deleted since init (or be otherwise absent); guarantee
             // it exists so cmd's `>>` redirection never fails the whole launch line
             try { Directory.CreateDirectory(Path.GetDirectoryName(dshLog)); } catch (Exception ex) { Logging.Log("StartCore: ensure harness.log dir failed: " + ex.Message); }
+            // harness.log is appended by the child and never goes through Log()'s rotation; rotate
+            // it here before a fresh spawn (the previous harness should be gone, so the file is free)
+            Logging.RotateIfLarge(dshLog);
             // WorkingDirectory fallback: prefer the configured work dir; when unset, fall back
             // to the dsh entry's directory; only if both are empty do we leave it as the current dir
             string workDir = cfg.DshWorkDir;
@@ -457,6 +460,10 @@ class DshProcess
         // so a stray/non-originated --elevated-kill invocation is rejected (fail-closed)
         string nonce = Guid.NewGuid().ToString("N");
         string tokenPath = ElevateTokenPath(nonce);
+        // The helper deletes the token after validating it. We must not delete it while the helper
+        // may still be alive: a slow UAC approval (>30s) would otherwise make the approved helper
+        // find a missing token and refuse the kill. Only clean up when we know it is not running.
+        bool helperAlive = false;
         try
         {
             try
@@ -474,14 +481,20 @@ class DshProcess
                 Verb = "runas"
             };
             Process p = null;
-            try { p = Process.Start(psi); }
+            try { p = Process.Start(psi); helperAlive = (p != null); }
             catch (Exception ex) { Logging.Log("elevated kill launch failed (UAC declined?): " + ex.Message); }
             if (p != null)
             {
-                p.WaitForExit(ElevatedKillWaitMs);
-                Logging.Log("elevated kill helper: exit=" + p.ExitCode);
-                if (p.ExitCode == 0) return true;
-                Logging.Log("elevated kill failed/refused, stop may be incomplete (helper exit=" + p.ExitCode + ")");
+                bool exited = p.WaitForExit(ElevatedKillWaitMs);
+                if (exited)
+                {
+                    helperAlive = false;
+                    Logging.Log("elevated kill helper: exit=" + p.ExitCode);
+                    if (p.ExitCode == 0) return true;
+                    Logging.Log("elevated kill failed/refused, stop may be incomplete (helper exit=" + p.ExitCode + ")");
+                    return false;
+                }
+                Logging.Log("elevated kill helper still running after " + ElevatedKillWaitMs + "ms, leaving token for helper cleanup");
                 return false;
             }
             Logging.Log("elevated kill helper: Process.Start returned null");
@@ -494,9 +507,12 @@ class DshProcess
         }
         finally
         {
-            // idempotent cleanup: the helper deletes it after validation; this covers the
-            // declined / never-started / aborted paths so the token never lingers
-            try { File.Delete(tokenPath); } catch { }
+            // Clean up only when no helper is still alive. If it is alive, leave the token so a
+            // late UAC approval still passes validation; the helper itself deletes it.
+            if (!helperAlive)
+            {
+                try { File.Delete(tokenPath); } catch { }
+            }
         }
     }
 

@@ -8,7 +8,9 @@ static class Lang
     static Dictionary<string, string> zh = new Dictionary<string, string>();
     static Dictionary<string, string> en = new Dictionary<string, string>();
     static Dictionary<string, string> cur;
-    public static string Code = "zh";
+    static string code = "zh";
+    // private set: language state may only be changed through Init/Switch inside this class
+    public static string Code { get { return code; } private set { code = value; } }
 
     public static void Init(string iniLang)
     {

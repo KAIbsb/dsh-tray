@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
-[assembly: AssemblyVersion("1.1.2.0")]
-[assembly: AssemblyFileVersion("1.1.2.0")]
+[assembly: AssemblyVersion("1.1.3.0")]
+[assembly: AssemblyFileVersion("1.1.3.0")]
 [assembly: AssemblyProduct("dsh-tray")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
 
@@ -36,14 +36,13 @@ static class Program
         if (args.Length > 1)
         {
             // elevated kill helper: a separate elevated process spawned via runas. It verifies
-            // a one-time nonce + target identity before killing (fail-closed). Loads config so
-            // it can compare the dsh entry against the token + target command line.
+            // a one-time nonce + target identity before killing (fail-closed). Uses minimal config
+            // so the elevated process only resolves the dsh entry (no ini creation / registry writes).
             if (args[1] == "--elevated-kill" && args.Length > 2)
             {
                 Logging.InitLog();
-                Config.InitConfig();
-                var killDp = new DshProcess(Config.Current);
-                killDp.SelfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
+                Config.InitElevatedKillConfig();
+                var killDp = CreateProcess(false);
                 int pid;
                 if (int.TryParse(args[2], out pid))
                 {
@@ -82,9 +81,7 @@ static class Program
         // the old process, which has since exited); delete it so the user never has to by hand.
         CleanupStaleFiles();
         Config.InitConfig();
-        var dp = new DshProcess(Config.Current);
-        dp.SelfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
-        dp.AutoRestartEnabled = Config.LoadAutoRestart();
+        var dp = CreateProcess();
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
@@ -107,6 +104,16 @@ static class Program
         if (mutex != null) mutex.ReleaseMutex();
     }
 
+    // Shared DshProcess construction: wires the current process integrity and (optionally) the
+    // persisted auto-restart setting. Headless/elevated paths that don't need auto-restart pass false.
+    static DshProcess CreateProcess(bool loadAutoRestart = true)
+    {
+        var dp = new DshProcess(Config.Current);
+        dp.SelfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
+        if (loadAutoRestart) dp.AutoRestartEnabled = Config.LoadAutoRestart();
+        return dp;
+    }
+
     // Delete stale auto-update / dev-deploy leftovers next to the exe (e.g. dsh-tray.old.tmp.exe).
     // Called once at primary-instance startup, at which point the process that owned the file has
     // exited, so it is normally unlocked. Failures are logged and ignored (never fatal).
@@ -124,9 +131,7 @@ static class Program
     {
         string dir = Path.GetDirectoryName(Application.ExecutablePath);
         string report = Path.Combine(dir, "smoke-result.txt");
-        var dp = new DshProcess(Config.Current);
-        dp.SelfIntegrity = Win32.GetIntegrity(Process.GetCurrentProcess().Id);
-        dp.AutoRestartEnabled = Config.LoadAutoRestart();
+        var dp = CreateProcess();
         var sb = new StringBuilder();
         sb.AppendLine("node exists=" + File.Exists(Config.Current.NodePath));
         sb.AppendLine("dsh entry exists=" + File.Exists(Config.Current.DshEntry));
@@ -187,7 +192,7 @@ static class Program
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        var dp = new DshProcess(Config.Current);
+        var dp = CreateProcess(false);
         // 100% (native DeviceDpi)
         RenderSettingsPreview(dp, false, "settings-preview-light.png", null);
         RenderSettingsPreview(dp, true, "settings-preview-dark.png", null);

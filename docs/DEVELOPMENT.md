@@ -55,7 +55,7 @@ cmd /c .devtools\build-dev.bat
 
 ## 发布流程
 
-1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.1.2.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
+1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.1.3.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
 2. `git tag vX.Y.Z` 并 `git push --tags`
 3. GitHub Actions 自动编译 → 生成 SHA256 → 创建 Release 并附上 exe 与校验和
 
@@ -83,7 +83,7 @@ cmd /c .devtools\build-dev.bat
 | `--ui-preview` | 渲染设置窗口亮/暗两张截图(开发用),输出 `settings-preview-*.png`;可用临时 `dshtray.ini` 的 `lang` 控制语言 |
 | `--elevated-kill <pid>` | 以管理员身份杀进程树(由主程序按需自动调用) |
 
-日志:`%LOCALAPPDATA%\dsh-tray\tray.log`(托盘操作)超 5MB 自动轮转;`harness.log`(harness 输出)独立于托盘生命周期,暂不自动轮转,长期运行可能增长。
+日志:`%LOCALAPPDATA%\dsh-tray\tray.log`(托盘操作)超 5MB 自动轮转;`harness.log`(harness 输出)独立于托盘生命周期,每次启动 harness 前若超 5MB 会轮转为 `harness.log.old`(harness 运行中不强制轮转)。
 
 ## 图标与资源
 

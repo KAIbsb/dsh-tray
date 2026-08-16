@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -53,9 +54,16 @@ class SettingsForm : Form
     // last update-check result (null = no result yet, true = newer available, false = up to date)
     bool? checkResult;
     bool checkingUpdate;
+    bool autoUpdating;
+    // language updaters registered once in CreateControls; ApplyLang just runs them all
+    readonly List<Action> langUpdaters = new List<Action>();
+    // raised when the user changes the theme override; TrayMenu subscribes so the tray icon and
+    // process-wide uxtheme are refreshed without SettingsForm depending on TrayMenu
+    public event Action ThemeChanged;
     readonly bool? themeOverride;
+    readonly float? dpiOverride;
     Icon ownedIcon;
-    readonly float dpi;
+    float dpi;
 
     TableLayoutPanel root;
     TableLayoutPanel updateRow;
@@ -125,6 +133,7 @@ class SettingsForm : Form
         dp = process;
         appVersion = version;
         this.themeOverride = themeOverride;
+        this.dpiOverride = dpiOverride;
         langCode = Config.Current.IniLang ?? "";
         dpi = dpiOverride ?? ((float)DeviceDpi / 96f);
         if (dpiOverride.HasValue) Ui.SetScale(dpiOverride.Value); else Ui.SetScale(dpi);
@@ -149,9 +158,47 @@ class SettingsForm : Form
         try { ownedIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
         if (ownedIcon != null) Icon = ownedIcon;
 
+        // PerMonitorV2: when the dialog is moved to a monitor with a different DPI, rebuild the
+        // hand-scaled layout so row/button sizes match the new scale (AutoScaleMode.None does not
+        // re-run automatically). Preview mode keeps its fixed dpiOverride and never moves monitors.
+        DpiChanged += OnDpiChanged;
+
         BuildControls();
         ApplyTheme();
         ApplyLang();
+    }
+
+    void OnDpiChanged(object sender, DpiChangedEventArgs e)
+    {
+        if (dpiOverride.HasValue) return;
+        dpi = (float)e.DeviceDpiNew / 96f;
+        Ui.SetScale(dpi);
+        RebuildLayout();
+    }
+
+    void RebuildLayout()
+    {
+        if (root != null)
+        {
+            Controls.Remove(root);
+            DisposeControlTree(root);
+            root = null;
+        }
+        BuildControls();
+        ApplyTheme();
+        ApplyLang();
+    }
+
+    static void DisposeControlTree(Control c)
+    {
+        if (c == null) return;
+        while (c.Controls.Count > 0)
+        {
+            Control child = c.Controls[0];
+            c.Controls.Remove(child);
+            DisposeControlTree(child);
+        }
+        c.Dispose();
     }
 
     protected override void Dispose(bool disposing)
@@ -314,6 +361,8 @@ class SettingsForm : Form
         btnClose.Click += delegate { Close(); };
         closeRow.Controls.Add(btnClose, 0, 0);
         closeRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
+        RegisterLangUpdaters();
     }
 
     // add a 2-column-wide (label+content) row
@@ -341,19 +390,52 @@ class SettingsForm : Form
         grid.SetColumnSpan(sep, 2);
     }
 
+    // Central light/dark palette so theme colors are reviewable in one place.
+    sealed class ThemePalette
+    {
+        public Color Back, Fore, Line, BtnBack, BtnBorder, BtnHover, Link, Dim;
+        public Color Primary, PrimaryFore, PrimaryHover;
+
+        public static readonly ThemePalette Light = new ThemePalette
+        {
+            Back = SystemColors.Control,
+            Fore = SystemColors.ControlText,
+            Line = Color.FromArgb(0xC8, 0xC8, 0xC8),
+            BtnBack = SystemColors.Control,
+            BtnBorder = Color.FromArgb(0xB0, 0xB0, 0xB0),
+            BtnHover = Color.FromArgb(0xE8, 0xF0, 0xFE),
+            Link = Color.Blue,
+            Dim = Color.FromArgb(0x66, 0x66, 0x66),
+            Primary = Color.FromArgb(0x0F, 0x6C, 0xBD),
+            PrimaryFore = Color.White,
+            PrimaryHover = Color.FromArgb(0x17, 0x72, 0xC9)
+        };
+
+        public static readonly ThemePalette Dark = new ThemePalette
+        {
+            Back = Color.FromArgb(0x20, 0x20, 0x20),
+            Fore = Color.FromArgb(0xF0, 0xF0, 0xF0),
+            Line = Color.FromArgb(0x3F, 0x3F, 0x3F),
+            BtnBack = Color.FromArgb(0x45, 0x45, 0x45),
+            BtnBorder = Color.FromArgb(0x54, 0x54, 0x54),
+            BtnHover = Color.FromArgb(0x56, 0x56, 0x56),
+            Link = Color.FromArgb(0x8F, 0xC3, 0xFF),
+            Dim = Color.FromArgb(0xAA, 0xAA, 0xAA),
+            Primary = Color.FromArgb(0x0F, 0x6C, 0xBD),
+            PrimaryFore = Color.White,
+            PrimaryHover = Color.FromArgb(0x17, 0x72, 0xC9)
+        };
+    }
+
     // full light/dark adaptation across form + separators + every control
     // public: TrayMenu.ApplyThemeNow() calls it to re-theme the open dialog on a theme change
     public void ApplyTheme()
     {
         bool dark = themeOverride ?? Config.IsDarkMode();
-        Color back = dark ? Color.FromArgb(0x20, 0x20, 0x20) : SystemColors.Control;
-        Color fore = dark ? Color.FromArgb(0xF0, 0xF0, 0xF0) : SystemColors.ControlText;
-        Color line = dark ? Color.FromArgb(0x3F, 0x3F, 0x3F) : Color.FromArgb(0xC8, 0xC8, 0xC8);
-        Color btnBack = dark ? Color.FromArgb(0x45, 0x45, 0x45) : SystemColors.Control;
-        Color btnBorder = dark ? Color.FromArgb(0x54, 0x54, 0x54) : Color.FromArgb(0xB0, 0xB0, 0xB0);
-        Color btnHover = dark ? Color.FromArgb(0x56, 0x56, 0x56) : Color.FromArgb(0xE8, 0xF0, 0xFE);
-        Color link = dark ? Color.FromArgb(0x8F, 0xC3, 0xFF) : Color.Blue;
-        Color dim = dark ? Color.FromArgb(0xAA, 0xAA, 0xAA) : Color.FromArgb(0x66, 0x66, 0x66);
+        ThemePalette p = dark ? ThemePalette.Dark : ThemePalette.Light;
+        Color back = p.Back, fore = p.Fore, line = p.Line;
+        Color btnBack = p.BtnBack, btnBorder = p.BtnBorder, btnHover = p.BtnHover;
+        Color link = p.Link, dim = p.Dim;
 
         BackColor = back;
         ForeColor = fore;
@@ -391,8 +473,7 @@ class SettingsForm : Form
         StyleButton(btnAutoUpdate, btnBack, fore, btnBorder, btnHover);
         StyleButton(btnOpenConfig, btnBack, fore, btnBorder, btnHover);
         StyleButton(btnOpenLogs, btnBack, fore, btnBorder, btnHover);
-        StyleButton(btnClose, Color.FromArgb(0x0F, 0x6C, 0xBD), Color.White,
-            Color.FromArgb(0x0F, 0x6C, 0xBD), Color.FromArgb(0x17, 0x72, 0xC9));
+        StyleButton(btnClose, p.Primary, p.PrimaryFore, p.Primary, p.PrimaryHover);
 
         lnkRepo.LinkColor = link;
         lnkRepo.LinkBehavior = LinkBehavior.HoverUnderline;
@@ -428,45 +509,93 @@ class SettingsForm : Form
         b.UseVisualStyleBackColor = false;
     }
 
+    // Register one language updater per text-bearing control. ApplyLang simply runs this list, so
+    // adding a new text control only requires adding one updater here instead of editing ApplyLang.
+    void RegisterLangUpdaters()
+    {
+        langUpdaters.Clear();
+        langUpdaters.Add(delegate { Text = Lang.T("settings.title"); });
+        langUpdaters.Add(delegate { lblSecGeneral.Text = Lang.T("settings.groupGeneral"); });
+        langUpdaters.Add(delegate { lblSecAbout.Text = Lang.T("settings.groupAbout"); });
+        langUpdaters.Add(delegate { lblLanguage.Text = Lang.T("settings.language"); });
+        langUpdaters.Add(delegate { radioAuto.Text = Lang.T("settings.langAuto"); });
+        langUpdaters.Add(delegate { radioZh.Text = Lang.T("settings.langZh"); });
+        langUpdaters.Add(delegate { radioEn.Text = Lang.T("settings.langEn"); });
+        langUpdaters.Add(delegate
+        {
+            radioAuto.Checked = (langCode == "");
+            radioZh.Checked = (langCode == "zh");
+            radioEn.Checked = (langCode == "en");
+        });
+        langUpdaters.Add(delegate { lblTheme.Text = Lang.T("settings.theme"); });
+        langUpdaters.Add(delegate { radioThemeAuto.Text = Lang.T("settings.themeAuto"); });
+        langUpdaters.Add(delegate { radioThemeLight.Text = Lang.T("settings.themeLight"); });
+        langUpdaters.Add(delegate { radioThemeDark.Text = Lang.T("settings.themeDark"); });
+        langUpdaters.Add(delegate
+        {
+            string theme = (Config.ThemeOverride ?? "").Trim().ToLowerInvariant();
+            radioThemeAuto.Checked = (theme.Length == 0);
+            radioThemeLight.Checked = (theme == "light");
+            radioThemeDark.Checked = (theme == "dark");
+        });
+        langUpdaters.Add(delegate { chkAutoRestart.Text = Lang.T("settings.autoRestart"); });
+        langUpdaters.Add(delegate { chkAutostart.Text = Lang.T("settings.autostart"); });
+        langUpdaters.Add(delegate { btnCheck.Text = Lang.T("settings.checkUpdate"); });
+        langUpdaters.Add(delegate { btnAutoUpdate.Text = Lang.T("settings.autoUpdate"); });
+        langUpdaters.Add(delegate { lblVersion.Text = string.Format(Lang.T("settings.version"), appVersion); });
+        langUpdaters.Add(delegate { lblCurrentUrl.Text = string.Format(Lang.T("settings.currentUrl"), Config.Current.WebUrl); });
+        langUpdaters.Add(delegate { lnkRepo.Text = Lang.T("settings.repo"); });
+        langUpdaters.Add(delegate { lnkDownload.Text = Lang.T("settings.download"); });
+        langUpdaters.Add(delegate { btnOpenConfig.Text = Lang.T("settings.openConfig"); });
+        langUpdaters.Add(delegate { btnOpenLogs.Text = Lang.T("settings.openLogs"); });
+        langUpdaters.Add(delegate { btnClose.Text = Lang.T("settings.close"); });
+    }
+
     void ApplyLang()
     {
         applyingLang = true;
         applyingTheme = true; // ApplyLang also initializes theme radios; keep both guards on
-        Text = Lang.T("settings.title");
-        lblSecGeneral.Text = Lang.T("settings.groupGeneral");
-        lblSecAbout.Text = Lang.T("settings.groupAbout");
-        lblLanguage.Text = Lang.T("settings.language");
-        radioAuto.Text = Lang.T("settings.langAuto");
-        radioZh.Text = Lang.T("settings.langZh");
-        radioEn.Text = Lang.T("settings.langEn");
-        radioAuto.Checked = (langCode == "");
-        radioZh.Checked = (langCode == "zh");
-        radioEn.Checked = (langCode == "en");
-        lblTheme.Text = Lang.T("settings.theme");
-        radioThemeAuto.Text = Lang.T("settings.themeAuto");
-        radioThemeLight.Text = Lang.T("settings.themeLight");
-        radioThemeDark.Text = Lang.T("settings.themeDark");
-        string theme = (Config.ThemeOverride ?? "").Trim().ToLowerInvariant();
-        radioThemeAuto.Checked = (theme.Length == 0);
-        radioThemeLight.Checked = (theme == "light");
-        radioThemeDark.Checked = (theme == "dark");
-        chkAutoRestart.Text = Lang.T("settings.autoRestart");
-        chkAutostart.Text = Lang.T("settings.autostart");
-        btnCheck.Text = Lang.T("settings.checkUpdate");
-        btnAutoUpdate.Text = Lang.T("settings.autoUpdate");
-        lblVersion.Text = string.Format(Lang.T("settings.version"), appVersion);
-        lblCurrentUrl.Text = string.Format(Lang.T("settings.currentUrl"), Config.Current.WebUrl);
-        lnkRepo.Text = Lang.T("settings.repo");
-        lnkDownload.Text = Lang.T("settings.download");
-        btnOpenConfig.Text = Lang.T("settings.openConfig");
-        btnOpenLogs.Text = Lang.T("settings.openLogs");
-        btnClose.Text = Lang.T("settings.close");
-        // keep an already-displayed update-check result in sync with the new language
-        if (checkingUpdate) lblResult.Text = Lang.T("settings.checking");
-        else if (checkResult == true) lblResult.Text = string.Format(Lang.T("settings.updateAvailable"), UpdateCheck.LatestVersion);
-        else if (checkResult == false) lblResult.Text = Lang.T("settings.upToDate");
+        foreach (var u in langUpdaters) u();
+        RestoreDynamicUiState();
         applyingLang = false;
         applyingTheme = false;
+    }
+
+    // Restore update-check / auto-update dynamic UI state. Called after language switches and after
+    // a DPI rebuild so a visible "new version / up to date / updating" state is not lost.
+    void RestoreDynamicUiState()
+    {
+        if (checkingUpdate)
+        {
+            btnCheck.Enabled = false;
+            lblResult.Text = Lang.T("settings.checking");
+        }
+        else
+        {
+            btnCheck.Enabled = true;
+            if (checkResult == true)
+            {
+                lblResult.Text = string.Format(Lang.T("settings.updateAvailable"), UpdateCheck.LatestVersion);
+                lnkDownload.Visible = true;
+                btnAutoUpdate.Visible = true;
+            }
+            else if (checkResult == false)
+            {
+                lblResult.Text = Lang.T("settings.upToDate");
+                lnkDownload.Visible = false;
+                btnAutoUpdate.Visible = false;
+            }
+        }
+
+        if (autoUpdating)
+        {
+            btnAutoUpdate.Enabled = false;
+            btnAutoUpdate.Text = Lang.T("settings.updating");
+        }
+        else
+        {
+            btnAutoUpdate.Enabled = true;
+        }
     }
 
     // only fire on a radio becoming checked (radio groups emit both an uncheck and a check)
@@ -492,8 +621,9 @@ class SettingsForm : Form
         else val = "dark";
         Config.SetTheme(val);
         // apply immediately: tray sees the new effective theme (icon + uxtheme) and this dialog
-        // re-themes itself (TrayMenu.ApplyThemeNow also re-themes the open dialog via ApplyTheme)
-        TrayMenu.ApplyThemeNow();
+        // re-themes itself; TrayMenu subscribes to ThemeChanged for the tray side
+        if (ThemeChanged != null) ThemeChanged();
+        ApplyTheme();
     }
 
     void OnAutoRestartChanged()
@@ -518,6 +648,7 @@ class SettingsForm : Form
     {
         btnAutoUpdate.Enabled = false;
         btnAutoUpdate.Text = Lang.T("settings.updating");
+        autoUpdating = true;
         string destPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "dsh-tray", "update", "dsh-tray.exe.new");
@@ -529,6 +660,7 @@ class SettingsForm : Form
                 TryCleanup(destPath);
                 BeginInvokeSafe(delegate
                 {
+                    autoUpdating = false;
                     btnAutoUpdate.Enabled = true;
                     btnAutoUpdate.Text = Lang.T("settings.autoUpdate");
                 });
@@ -576,6 +708,7 @@ class SettingsForm : Form
             }
             BeginInvokeSafe(delegate
             {
+                autoUpdating = false;
                 btnAutoUpdate.Enabled = true;
                 btnAutoUpdate.Text = Lang.T("settings.autoUpdate");
             });
