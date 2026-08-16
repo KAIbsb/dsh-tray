@@ -97,8 +97,17 @@ static class Config
             string url = IniFile.Get(lines, "url");
             if (!string.IsNullOrEmpty(url))
             {
-                Current.WebUrl = url;
-                try { Current.Port = new Uri(url).Port; }
+                try
+                {
+                    var uri = new Uri(url);
+                    Current.WebUrl = url;
+                    Current.Port = uri.Port;
+                    // a URL without an explicit port silently uses the scheme default (80/443),
+                    // which almost never matches the harness port; warn so the user can fix it
+                    if (uri.IsDefaultPort)
+                        Logging.Log("ini url has no explicit port, using scheme default " + uri.Port +
+                            "; if the harness uses 3080, add :3080 to the url");
+                }
                 catch (Exception ex)
                 {
                     // roll back to the default so WebUrl and Port stay consistent
@@ -402,6 +411,9 @@ static class Config
             IniFile.Set(lines, "lang", lang);
             IniFile.Save(IniPath, lines);
             SyncIniLines();
+            // keep the runtime snapshot in sync so re-opening the settings dialog reflects the
+            // current ini value instead of the process-start value
+            Current.IniLang = lang;
         }
         catch (Exception ex) { Logging.Log("SaveLang failed: " + ex.Message); }
     }

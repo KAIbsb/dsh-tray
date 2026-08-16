@@ -45,7 +45,7 @@ build.bat
 csc @dsh-tray.rsp
 ```
 
-编译参数与源文件清单统一收敛在仓库根的 `dsh-tray.rsp`(当前 12 个源文件 + 图标/配置模板内嵌资源),`build.bat` 与 CI(`.github/workflows/release.yml`)均以它作为单一来源,避免多处命令漂移。`csc.exe` 位于 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`(`build.bat` 自动定位)。产物为单文件 exe(图标、状态图标与配置模板均内嵌),无需安装任何运行时。
+编译参数与源文件清单统一收敛在仓库根的 `dsh-tray.rsp`(当前 13 个源文件 + 图标/配置模板内嵌资源),`build.bat` 与 CI(`.github/workflows/release.yml`)均以它作为单一来源,避免多处命令漂移。`csc.exe` 位于 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`(`build.bat` 自动定位)。产物为单文件 exe(图标、状态图标与配置模板均内嵌),无需安装任何运行时。
 
 开发期若托盘正在运行(exe 被占用),可用本地脚本编译到临时名并自动跑 smoke:
 
@@ -83,7 +83,7 @@ cmd /c .devtools\build-dev.bat
 | `--ui-preview` | 渲染设置窗口亮/暗两张截图(开发用),输出 `settings-preview-*.png`;可用临时 `dshtray.ini` 的 `lang` 控制语言 |
 | `--elevated-kill <pid>` | 以管理员身份杀进程树(由主程序按需自动调用) |
 
-日志:`%LOCALAPPDATA%\dsh-tray\tray.log`(托盘操作)+ `harness.log`(harness 输出),均超 5MB 自动轮转。
+日志:`%LOCALAPPDATA%\dsh-tray\tray.log`(托盘操作)超 5MB 自动轮转;`harness.log`(harness 输出)独立于托盘生命周期,暂不自动轮转,长期运行可能增长。
 
 ## 图标与资源
 

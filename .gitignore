@@ -9,7 +9,7 @@ smoke-result.txt
 menu-test.txt
 menu-test.png
 find-window-result.txt
-settings-preview-*.png
+*-preview-*.png
 
 # 用户本地配置(绝不入库)
 dshtray.ini

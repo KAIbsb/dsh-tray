@@ -135,6 +135,7 @@ static class Program
         sb.AppendLine("autoRestart=" + dp.AutoRestartEnabled);
         sb.AppendLine("ui lang=" + Lang.Code);
         sb.AppendLine("themeOverride=" + (Config.ThemeOverride ?? "") + " isDark=" + Config.IsDarkMode());
+        sb.AppendLine("settingsRows=" + SettingsForm.ValidateRows());
         using (Stream rs = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-blue.png"))
             sb.AppendLine("blue icon resource=" + (rs != null));
         using (Stream rs2 = Assembly.GetExecutingAssembly().GetManifestResourceStream("whale-dark.png"))
@@ -194,6 +195,10 @@ static class Program
         // overwrite the 100% images) — for catching high-DPI text clipping headless
         RenderSettingsPreview(dp, false, "dpi125-preview-light.png", 1.25f);
         RenderSettingsPreview(dp, true, "dpi125-preview-dark.png", 1.25f);
+        // 150% is a real blind spot on many laptops (125% is most common, but 150% exists);
+        // cover it too so high-DPI layout changes are verified before release.
+        RenderSettingsPreview(dp, false, "dpi150-preview-light.png", 1.5f);
+        RenderSettingsPreview(dp, true, "dpi150-preview-dark.png", 1.5f);
     }
 
     static void RenderSettingsPreview(DshProcess dp, bool dark, string fileName, float? dpiOverride)

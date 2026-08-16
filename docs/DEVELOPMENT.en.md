@@ -45,7 +45,7 @@ Equivalent to invoking the compiler response file directly:
 csc @dsh-tray.rsp
 ```
 
-Compiler flags and the source-file list are consolidated into `dsh-tray.rsp` at the repo root (currently 12 source files plus embedded icon/config-template resources), which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the command copies can't drift apart. `csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build.bat` locates it automatically). The output is a single exe (icon, status icons and the config template all embedded) with no runtime to install.
+Compiler flags and the source-file list are consolidated into `dsh-tray.rsp` at the repo root (currently 13 source files plus embedded icon/config-template resources), which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the command copies can't drift apart. `csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build.bat` locates it automatically). The output is a single exe (icon, status icons and the config template all embedded) with no runtime to install.
 
 During development, when the tray is running and the exe is locked, use the local helper that builds to a temporary name and runs smoke:
 
@@ -83,7 +83,7 @@ cmd /c .devtools\build-dev.bat
 | `--ui-preview` | Renders light/dark screenshots of the settings window (dev use), writes `settings-preview-*.png`; a temporary `dshtray.ini` `lang` key controls the language |
 | `--elevated-kill <pid>` | Kills a process tree as administrator (invoked automatically on demand) |
 
-Logs: `%LOCALAPPDATA%\dsh-tray\tray.log` (tray operations) + `harness.log` (harness output), both auto-rotated past 5 MB.
+Logs: `%LOCALAPPDATA%\dsh-tray\tray.log` (tray operations) is auto-rotated past 5 MB; `harness.log` (harness output) is independent of the tray lifetime and is not auto-rotated, so it may grow over long runs.
 
 ## Icons & assets
 
