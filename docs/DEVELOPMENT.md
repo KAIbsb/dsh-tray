@@ -55,7 +55,7 @@ cmd /c .devtools\build-dev.bat
 
 ## 发布流程
 
-1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.1.3.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
+1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.1.4.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
 2. `git tag vX.Y.Z` 并 `git push --tags`
 3. GitHub Actions 自动编译 → 生成 SHA256 → 创建 Release 并附上 exe 与校验和
 

@@ -191,7 +191,25 @@ class DshProcess
     {
         if (!PortOpen(cfg.Port)) return false;
         int pid = FindPidOnPort(cfg.Port);
-        return pid > 0 && IsNodeProcess(pid) && CommandLineLooksLikeDsh(pid);
+        bool served = pid > 0 && LooksLikeDshOrElevatedNode(pid);
+        if (pid > 0 && !served)
+            Logging.Log("PortServedByDsh: pid=" + pid + " node=" + IsNodeProcess(pid) +
+                " looksLikeDsh=" + CommandLineLooksLikeDsh(pid));
+        return served;
+    }
+
+    // Identity check for adoption/stop. A normal dsh harness is verified by command-line markers.
+    // When the harness runs elevated (High) and the tray is Medium, the WMI command line may be
+    // unreadable and the marker check fails closed. In that case a node process on our configured
+    // port with higher integrity than the tray is treated as dsh: for the stop path this is still
+    // safe because KillTree will elevate and the elevated helper re-verifies the command line
+    // before killing (fail-closed if it is actually an unrelated node).
+    bool LooksLikeDshOrElevatedNode(int pid)
+    {
+        if (!IsNodeProcess(pid)) return false;
+        if (CommandLineLooksLikeDsh(pid)) return true;
+        Win32.IntegrityLevel target = Win32.GetIntegrity(pid);
+        return target != Win32.IntegrityLevel.Unknown && target > selfIntegrity;
     }
 
     // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
@@ -255,8 +273,9 @@ class DshProcess
             if (pid > 0)
             {
                 // only kill the port owner if it is a node process whose command line looks like
-                // dsh; an unrelated node that happens to hold our port is never killed
-                if (IsNodeProcess(pid) && CommandLineLooksLikeDsh(pid))
+                // dsh (or an elevated node that we cannot read but the elevated helper will
+                // re-verify); an unrelated node that happens to hold our port is never killed
+                if (LooksLikeDshOrElevatedNode(pid))
                 {
                     Logging.Log("StopDsh: killing external pid=" + pid);
                     KillTree(pid);
