@@ -63,16 +63,28 @@ static class WindowMgr
         return windows;
     }
 
+    // A browser tab appends " - Google Chrome" / " - Microsoft Edge" to its title; the dedicated
+    // app-mode harness window does not. Matching on the marker alone is too loose and would also
+    // reload unrelated tabs whose title happens to mention "deepseek harness".
+    static bool LooksLikeHarnessWindow(string title)
+    {
+        if (title == null ||
+            title.IndexOf("DeepSeek Harness", StringComparison.OrdinalIgnoreCase) < 0)
+            return false;
+        return !title.EndsWith(" - Google Chrome", StringComparison.OrdinalIgnoreCase) &&
+               !title.EndsWith(" - Microsoft Edge", StringComparison.OrdinalIgnoreCase) &&
+               !title.EndsWith(" - Chromium", StringComparison.OrdinalIgnoreCase);
+    }
+
     // find Chrome top-level windows whose title matches the DSH webui and send Ctrl+R
     public static void ReloadAppWindow()
     {
         try
         {
-            const string title = "DeepSeek Harness";
             var targets = new List<IntPtr>();
             foreach (var w in EnumerateAppWindows())
             {
-                if (w.Value.IndexOf(title, StringComparison.OrdinalIgnoreCase) >= 0)
+                if (LooksLikeHarnessWindow(w.Value))
                     targets.Add(w.Key);
             }
 
