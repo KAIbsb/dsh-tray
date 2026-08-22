@@ -107,7 +107,9 @@ class DshProcess
     // inject commands. Windows paths cannot contain `"`, so the quote structure is safe.
     public static string BuildLaunchCmd()
     {
-        return "/c \"\"%DSH_TRAY_NODE%\" \"%DSH_TRAY_ENTRY%\" web >> \"%DSH_TRAY_LOG%\" 2>&1\"";
+        // dsh web (>= rc.8) opens the browser by default; --no-open keeps that from spawning a new
+        // tab on every start/restart. The tray's own ReloadAppWindow refreshes the existing app window.
+        return "/c \"\"%DSH_TRAY_NODE%\" \"%DSH_TRAY_ENTRY%\" web --no-open >> \"%DSH_TRAY_LOG%\" 2>&1\"";
     }
 
     // copy the launch parameters into the child environment (must run before Process.Start)

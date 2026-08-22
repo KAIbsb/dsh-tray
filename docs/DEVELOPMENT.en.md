@@ -55,7 +55,7 @@ cmd /c .devtools\build-dev.bat
 
 ## Release process
 
-1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.1.5.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
+1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.1.6.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
 2. `git tag vX.Y.Z` and `git push --tags`
 3. GitHub Actions compiles, generates the SHA256, and creates a Release with the exe and checksum attached
 
