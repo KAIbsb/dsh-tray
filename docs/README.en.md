@@ -12,7 +12,7 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 
 ## Features
 
-- **Lifecycle management**: start / restart / stop / exit, all from the tray menu
+- **Lifecycle management**: start / restart / stop / exit, all from the tray menu; **restart prefers the plugin-market-style soft restart** (replay the exact boot invocation of the running host, hand off through a detached helper that waits for the port to release, then relaunch), falling back to the hard restart on failure
 - **Single-click tray icon**: starts the harness and opens the window if it's not running; opens the window directly if it is
 - **Status icon**: blue whale while running; black/white whale when stopped, switching with the system light/dark theme in real time
 - **Auto-restart on crash** (toggleable): brings the harness back up after an unexpected exit, with cooldowns to prevent restart loops

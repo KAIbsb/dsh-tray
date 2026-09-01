@@ -106,17 +106,26 @@ static class TrayMenu
         UpdateStatus();
     }
 
-    static void PollTick()
+    static bool pollBusy; // reentrancy guard for the async poll tick
+
+    static async void PollTick()
     {
-        bool d = Config.IsDarkMode();
-        if (d != darkMode)
+        if (pollBusy) return;
+        pollBusy = true;
+        try
         {
-            darkMode = d;
-            Win32.ApplyAppTheme(darkMode);
-            Logging.Log("theme changed to " + (d ? "dark" : "light"));
+            bool d = Config.IsDarkMode();
+            if (d != darkMode)
+            {
+                darkMode = d;
+                Win32.ApplyAppTheme(darkMode);
+                Logging.Log("theme changed to " + (d ? "dark" : "light"));
+            }
+            dp.PollAutoRestart();
+            await dp.PollSoftRestartAsync(); // heavy WMI/netstat probe runs off the UI thread
         }
-        dp.PollAutoRestart();
-        UpdateStatus();
+        catch (Exception ex) { Logging.Log("PollTick failed: " + ex.Message); }
+        finally { pollBusy = false; UpdateStatus(); }
     }
 
     static void BuildTray()

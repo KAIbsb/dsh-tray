@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
-[assembly: AssemblyVersion("1.1.6.0")]
-[assembly: AssemblyFileVersion("1.1.6.0")]
+[assembly: AssemblyVersion("1.2.0.0")]
+[assembly: AssemblyFileVersion("1.2.0.0")]
 [assembly: AssemblyProduct("dsh-tray")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
 
@@ -51,6 +51,17 @@ static class Program
                     Environment.ExitCode = ok ? 0 : 1;
                 }
                 else Environment.ExitCode = 1;
+                return;
+            }
+
+            // detached restart helper: replays the exact launch after the old port frees.
+            // Kept before the single-instance mutex just like --elevated-kill: it is spawned by a
+            // live instance (which holds the mutex) and must not be gated by it.
+            if (args[1] == "--restart-helper" && args.Length > 2)
+            {
+                Logging.InitLog();
+                bool ok = DshProcess.RunRestartHelper(args[2]);
+                Environment.ExitCode = ok ? 0 : 1;
                 return;
             }
 
