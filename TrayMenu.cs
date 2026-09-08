@@ -50,12 +50,12 @@ static class TrayMenu
         // operation-failure feedback: the tray owns the NotifyIcon, so it is the balloon owner
         UiFeedback.BalloonRequested += OnBalloon;
         UiFeedback.InfoRequested += OnInfo;
-        if (dp.State == DshState.Stopped)
-        {
+        // initial start: the state machine is always Stopped here (the constructor has no side
+        // effects), so spawn-or-adopt settles the state within seconds; the icon tracks it via
+        // UpdateStatus
 #pragma warning disable 4014 // fire-and-forget initial start; the status icon settles via UpdateStatus
-            dp.StartAsync();
+        dp.StartAsync();
 #pragma warning restore 4014
-        }
         UpdateStatus();
         pollTimer = new System.Windows.Forms.Timer();
         pollTimer.Interval = PollIntervalMs;
@@ -152,7 +152,9 @@ static class TrayMenu
         };
     }
 
-    // left click: ensure the harness is up, then open the window (RunAsync handles logging/status)
+    // left click: ensure the harness is up, then open the window (RunAsync handles logging/status).
+    // Starting takes seconds and can fail (missing node/entry): give immediate feedback and a
+    // explicit failure balloon instead of up to 30s of silence followed by a dead page.
     static void StartAndOpen()
     {
         RunAsync(async () =>
@@ -161,7 +163,15 @@ static class TrayMenu
             if (st == DshState.Starting || st == DshState.Stopping)
                 return; // transition in flight: don't open a window against a half-started state
             if (st == DshState.Stopped)
+            {
+                UiFeedback.Info(Lang.T("feedback.starting"));
                 await dp.StartAsync();
+                if (dp.State != DshState.Running)
+                {
+                    UiFeedback.Fail(Lang.T("feedback.startFailed"));
+                    return;
+                }
+            }
             WindowMgr.OpenWindow();
         }, "start");
     }

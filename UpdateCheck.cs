@@ -18,7 +18,6 @@ static class UpdateCheck
     // GitHub release checksums live next to the asset as <asset>.sha256
     public static string ChecksumUrl { get { return DownloadUrl + ".sha256"; } }
 
-    public static string LatestTag;
     public static string LatestVersion;
 
     // true once a newer version than this build has been discovered (result of the last check)
@@ -54,7 +53,6 @@ static class UpdateCheck
                 if (latest == null) { Logging.Log("UpdateCheck: unparsable tag " + tag); return false; }
                 if (IsNewer(latest, appVersion))
                 {
-                    LatestTag = tag;
                     LatestVersion = latest;
                     Logging.Log("UpdateCheck: new version available " + tag);
                     return true;

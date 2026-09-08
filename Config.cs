@@ -33,6 +33,11 @@ static class Config
     // IniFile.Save so the live value and the file stay in sync for the process lifetime.
     static List<string> iniLines;
 
+    static string dshVersion;
+    // dsh package version ("0.1.2-rc.1" style), parsed once from the detected entry's
+    // package.json; used to gate version-sensitive launch flags. Null when unknown.
+    public static string DshVersion { get { return dshVersion; } }
+
     public static string IniPath
     {
         get { return Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "dshtray.ini"); }
@@ -52,10 +57,42 @@ static class Config
             Current.DshWorkDir = Path.GetDirectoryName(Path.GetDirectoryName(Current.DshEntry));
         if (string.IsNullOrEmpty(Current.ChromePath) || !File.Exists(Current.ChromePath)) Current.ChromePath = DetectChrome();
         InitBrowserNames();
+        dshVersion = ReadDshVersion(Current.DshEntry);
         Logging.Log("Config: node=" + (Current.NodePath ?? "NOT FOUND") +
             " | dshEntry=" + (Current.DshEntry ?? "NOT FOUND") +
+            " | dshVersion=" + (dshVersion ?? "UNKNOWN") +
             " | chrome=" + (Current.ChromePath ?? "NOT FOUND") +
             " | url=" + Current.WebUrl);
+    }
+
+    // The dsh package version lives in <entry>\..\package.json (entry is lib\bin.js). Read once
+    // at startup; failure means unknown, which callers treat as "newest known behavior".
+    static string ReadDshVersion(string dshEntry)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(dshEntry)) return null;
+            string pkg = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(dshEntry)), "package.json");
+            if (!File.Exists(pkg)) return null;
+            return ExtractJsonString(File.ReadAllText(pkg), "version");
+        }
+        catch (Exception ex) { Logging.Log("ReadDshVersion failed: " + ex.Message); return null; }
+    }
+
+    // minimal "key": "value" string extraction (package.json has no escapes in the fields we
+    // read). No JSON library dependency.
+    static string ExtractJsonString(string json, string key)
+    {
+        string needle = "\"" + key + "\"";
+        int i = json.IndexOf(needle, StringComparison.Ordinal);
+        if (i < 0) return null;
+        i = json.IndexOf(':', i + needle.Length);
+        if (i < 0) return null;
+        i = json.IndexOf('"', i + 1);
+        if (i < 0) return null;
+        int j = json.IndexOf('"', i + 1);
+        if (j < 0) return null;
+        return json.Substring(i + 1, j - i - 1);
     }
 
     // Minimal config for the elevated-kill helper. Unlike InitConfig, this must NOT create the ini
@@ -324,7 +361,9 @@ static class Config
         {
             var lines = IniLines();
             IniFile.Set(lines, "autostart", want ? "true" : "false");
-            IniFile.Save(IniPath, lines);
+            // ini is authoritative: if it cannot be written, do not write the registry mirror
+            // either, so the two never disagree about whether autostart is on
+            if (!IniFile.Save(IniPath, lines)) return;
             SyncIniLines();
             WriteRunKey(want);
             Logging.Log("autostart = " + want);
@@ -417,9 +456,7 @@ static class Config
     {
         try
         {
-            EnsureIni();
-            if (iniLines == null) iniLines = IniFile.Load(IniPath);
-            var lines = iniLines;
+            var lines = IniLines();
             IniFile.Set(lines, "lang", lang);
             IniFile.Save(IniPath, lines);
             SyncIniLines();

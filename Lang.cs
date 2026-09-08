@@ -45,6 +45,9 @@ static class Lang
         zh["settings.groupGeneral"] = "通用";
         zh["settings.groupAbout"] = "关于 / 更新";
         zh["feedback.openWindowFailed"] = "打开窗口失败,详情见日志";
+        zh["feedback.starting"] = "DSH 正在启动…";
+        zh["feedback.startFailed"] = "DSH 启动失败,详情见日志";
+        zh["feedback.webAuthPending"] = "Web UI 需要重新认证（harness 不是由托盘启动的）：点托盘“重启”后再打开即可自动完成";
         zh["feedback.openLogsFailed"] = "打开日志文件夹失败,详情见日志";
         zh["feedback.openConfigFailed"] = "打开配置文件失败,详情见日志";
         zh["settings.autoUpdate"] = "自动更新";
@@ -88,6 +91,9 @@ static class Lang
         en["settings.groupGeneral"] = "General";
         en["settings.groupAbout"] = "About / Updates";
         en["feedback.openWindowFailed"] = "Failed to open the window; see the log";
+        en["feedback.starting"] = "Starting DSH…";
+        en["feedback.startFailed"] = "Failed to start DSH; see the log";
+        en["feedback.webAuthPending"] = "Web UI needs re-auth (the harness was not started by the tray): click tray Restart, then Open, to authenticate automatically";
         en["feedback.openLogsFailed"] = "Failed to open the logs folder; see the log";
         en["feedback.openConfigFailed"] = "Failed to open the config file; see the log";
         en["settings.autoUpdate"] = "Auto-update";

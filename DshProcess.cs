@@ -18,8 +18,8 @@ using System.Windows.Forms;
 // (Start/Stop/Restart), never write the state directly.
 public enum DshState { Stopped, Starting, Running, Stopping }
 
-// Launch spec the --restart-helper replays. Mirrors dshmarket's restartLaunch(): the exact file,
-// args, cwd and log destination of the running host, plus the port the replacement must bind.
+// Launch spec the --restart-helper replays: the exact file, args, cwd and log destination of
+// the running host, plus the port the replacement must bind.
 class RestartSpec
 {
     public int Port;
@@ -56,7 +56,7 @@ class DshProcess
     int lastAutoRestartTick;
     bool autoRestartEnabled;
     Win32.IntegrityLevel selfIntegrity;
-    // ---- plugin-market style soft restart (ported from dshmarket's restart.ts) ----
+    // ---- soft restart: a detached helper replays the running host's exact launch ----
     // The tray schedules a detached --restart-helper, lets the old host go, and the helper
     // waits for the port to release, respawns the EXACT launch invocation and confirms it binds.
     // The old kill+respawn path remains as the fallback.
@@ -91,13 +91,6 @@ class DshProcess
         set { lock (stateLock) autoRestartEnabled = value; }
     }
 
-    public void ToggleAutoRestart()
-    {
-        AutoRestartEnabled = !AutoRestartEnabled;
-        Config.SaveAutoRestart(AutoRestartEnabled);
-        Logging.Log("autoRestart = " + AutoRestartEnabled);
-    }
-
     // self-heal poll: only Stopped and not user-stopped, past the cooldowns, triggers a start.
     // The CAS (Stopped->Starting) is done under the lock; the actual spawn/wait runs as a
     // fire-and-forget flow so the poll (UI timer) never blocks or double-starts.
@@ -130,11 +123,68 @@ class DshProcess
     // are passed via environment variables (ApplyLaunchEnv) so cmd expands them literally — a
     // value containing `& | ^ ( ) < >` stays literal and cannot break the quoting structure or
     // inject commands. Windows paths cannot contain `"`, so the quote structure is safe.
-    public static string BuildLaunchCmd()
+    public string BuildLaunchCmd(bool passNoOpen)
     {
-        // dsh web (>= rc.8) opens the browser by default; --no-open keeps that from spawning a new
-        // tab on every start/restart. The tray's own ReloadAppWindow refreshes the existing app window.
-        return "/c \"\"%DSH_TRAY_NODE%\" \"%DSH_TRAY_ENTRY%\" web --no-open >> \"%DSH_TRAY_LOG%\" 2>&1\"";
+        // dsh web (0.1.0-rc.8+) opens the browser by default; --no-open keeps that from spawning
+        // a new tab on every start/restart (the tray's own ReloadAppWindow refreshes the existing
+        // app window). Older versions reject the flag and die before printing their banner, so
+        // the caller gates it on the installed dsh version (DshSupportsNoOpen).
+        string args = passNoOpen ? " --no-open" : "";
+        return "/c \"\"%DSH_TRAY_NODE%\" \"%DSH_TRAY_ENTRY%\" web" + args + " >> \"%DSH_TRAY_LOG%\" 2>&1\"";
+    }
+
+    // Whether the installed dsh accepts `web --no-open`. The flag exists only in web-startup
+    // from 0.1.0-rc.8 up: the launcher passes unknown flags through, but the web profile's own
+    // parser then rejects them and the harness exits before printing its banner. Decided once
+    // per process from Config.DshVersion; an unknown version defaults to passing the flag,
+    // because every current release has it and a broken install fails loudly either way.
+    bool noOpenDecided;
+    bool noOpenSupported = true;
+
+    bool DshSupportsNoOpen()
+    {
+        if (!noOpenDecided)
+        {
+            noOpenSupported = Config.DshVersion == null || VersionSupportsNoOpen(Config.DshVersion);
+            noOpenDecided = true;
+            Logging.Log("launch flags: --no-open " + (noOpenSupported ? "on" : "off") +
+                " (dsh " + (Config.DshVersion ?? "version unknown") + ")");
+        }
+        return noOpenSupported;
+    }
+
+    // semver-ish compare against the introduction point 0.1.0-rc.8. A version whose numeric
+    // core is greater than 0.1.0 always supports the flag; at exactly 0.1.0 only rc.N with
+    // N >= 8 (and the final release) does. Unparsable input defaults to true.
+    static bool VersionSupportsNoOpen(string version)
+    {
+        if (string.IsNullOrEmpty(version)) return true;
+        string core = version;
+        string pre = null;
+        int dash = version.IndexOf('-');
+        if (dash >= 0) { core = version.Substring(0, dash); pre = version.Substring(dash + 1); }
+        string[] segs = core.Split('.');
+        int major, minor, patch;
+        if (!TryParseSeg(segs, 0, out major) || !TryParseSeg(segs, 1, out minor) || !TryParseSeg(segs, 2, out patch))
+            return true;
+        if (major > 0) return true;                           // 1.x+
+        if (minor > 1) return true;                           // 0.2.x+
+        if (minor < 1) return false;                          // 0.0.x
+        if (patch > 0) return true;                           // 0.1.1+
+        if (pre == null) return true;                         // 0.1.0 final
+        if (pre.StartsWith("rc.", StringComparison.Ordinal))
+        {
+            int n;
+            if (int.TryParse(pre.Substring(3), out n)) return n >= 8;
+        }
+        return false; // earlier 0.1.0 prerelease (rc.1-rc.7, alpha/beta) predates the flag
+    }
+
+    static bool TryParseSeg(string[] segs, int i, out int value)
+    {
+        value = 0;
+        if (i >= segs.Length) return true; // missing segments count as 0
+        return int.TryParse(segs[i].Trim(), out value);
     }
 
     // copy the launch parameters into the child environment (must run before Process.Start)
@@ -194,7 +244,7 @@ class DshProcess
             var psi = new ProcessStartInfo
             {
                 FileName = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
-                Arguments = BuildLaunchCmd(),
+                Arguments = BuildLaunchCmd(DshSupportsNoOpen()),
                 WorkingDirectory = workDir,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -278,7 +328,7 @@ class DshProcess
             }
             Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1) + (current ? "" : " (stale)"));
         }
-        catch { }
+        catch (Exception ex) { Logging.Log("dshProcExited failed: " + ex.Message); }
     }
 
     // core stop (no state transition): kill owned process + any node on the port, then wait for
@@ -294,14 +344,28 @@ class DshProcess
             {
                 try { owned = !dshProc.HasExited; ownedPid = dshProc.Id; p = dshProc; } catch { owned = false; }
             }
-            // detach + dispose + null are all fast; do them under the lock (no WaitForExit/KillTree here)
-            DisposeDshProcLocked();
+            if (!owned)
+            {
+                // nothing to wait for later: detach + dispose now (fast, under the lock)
+                DisposeDshProcLocked();
+            }
         }
         if (owned)
         {
             Logging.Log("StopDsh: killing owned pid=" + ownedPid);
             KillTree(ownedPid); // slow; outside the lock
-            try { p.WaitForExit(ProcessWaitExitMs); } catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
+            // p is still owned exclusively here (dshProc was not disposed): wait for the cmd
+            // wrapper to exit BEFORE disposing it, so the wait actually means something
+            try
+            {
+                if (!p.WaitForExit(ProcessWaitExitMs))
+                    Logging.Log("StopDsh: wrapper pid=" + ownedPid + " still alive after " + ProcessWaitExitMs + "ms");
+            }
+            catch (Exception ex) { Logging.Log("StopDsh WaitForExit failed: " + ex.Message); }
+            lock (stateLock)
+            {
+                if (ReferenceEquals(dshProc, p)) DisposeDshProcLocked();
+            }
         }
 
         if (PortOpen(cfg.Port))
@@ -349,7 +413,9 @@ class DshProcess
         StartResult r = StartCore(); // synchronous spawn (fast, non-blocking); no closure needed
         if (r == StartResult.AlreadyUp)
         {
-            // nothing was spawned: the running harness is adopted as ours
+            // nothing was spawned: the running harness is adopted as ours. Track its process too,
+            // so crash detection/auto-restart keep working (never "Running but nobody is tracked").
+            bool adopted = AdoptPortOwnerProcess();
             lock (stateLock)
             {
                 if (state == DshState.Starting)
@@ -358,7 +424,7 @@ class DshProcess
                     userStopped = false;
                 }
             }
-            Logging.Log("StartFlow: adopted existing harness (running)");
+            Logging.Log("StartFlow: adopted existing harness (running, tracked=" + adopted + ")");
             return;
         }
         bool up = (r == StartResult.Launched) && await WaitForPortUpAsync();
@@ -368,7 +434,7 @@ class DshProcess
             {
                 state = up ? DshState.Running : DshState.Stopped;
                 if (up) userStopped = false;
-                else Logging.Log("StartAsync: start failed or port wait timed out");
+                else Logging.Log("StartFlow: start failed or port wait timed out");
             }
         }
     }
@@ -387,11 +453,12 @@ class DshProcess
         // a refused stop (e.g. elevated kill declined) can leave a node still serving the port:
         // adopt it instead of lying with a Stopped state over a live harness
         bool served = PortServedByDsh();
+        bool adopted = served && AdoptPortOwnerProcess();
         lock (stateLock)
         {
             if (!freed && served)
             {
-                Logging.Log("StopAsync: stop failed, adopting running harness (userStopped reset)");
+                Logging.Log("StopAsync: stop failed, adopting running harness (tracked=" + adopted + ", userStopped reset)");
                 state = DshState.Running;
                 userStopped = false;
             }
@@ -402,10 +469,10 @@ class DshProcess
         }
     }
 
-    // Running -> restart. Tries the plugin-market-style soft restart first: a detached helper
-    // waits for the port to release, replays the EXACT boot invocation of the running host, and
-    // confirms the replacement binds. If any part cannot be prepared, or the handoff fails, the
-    // original kill+respawn path (RestartHardCoreAsync) is used instead.
+    // Running -> restart. Tries the soft restart first: a detached helper waits for the port to
+    // release, replays the EXACT boot invocation of the running host, and confirms the
+    // replacement binds. If any part cannot be prepared, or the handoff fails, the original
+    // kill+respawn path (RestartHardCoreAsync) is used instead.
     // Starting or Stopping is a no-op (no double clicks); Stopped delegates to StartAsync.
     public async Task RestartAsync()
     {
@@ -455,6 +522,7 @@ class DshProcess
         Logging.Log("=== RestartDsh (hard) ===");
         bool freed = await Task.Run(() => StopCore());
         bool served = PortServedByDsh();
+        bool adopted = served && AdoptPortOwnerProcess();
         lock (stateLock)
         {
             if (!freed && served)
@@ -462,7 +530,7 @@ class DshProcess
                 // stop failed but a node still serves the port: adopt, no fresh start
                 state = DshState.Running;
                 userStopped = false;
-                Logging.Log("RestartAsync: stop failed, adopting running harness");
+                Logging.Log("RestartAsync: stop failed, adopting running harness (tracked=" + adopted + ")");
                 return;
             }
             state = DshState.Stopped;
@@ -473,13 +541,22 @@ class DshProcess
 
     // Prepare + schedule the soft restart. Returns true when the helper handoff is in flight
     // (the poll or the completion source owns the rest); false means the caller must use the
-    // hard fallback. Never blocks the UI thread on WMI/netstat/taskkill (all run on the caller's
-    // async context via Task.Run where needed).
+    // hard fallback. The prepare phase probes WMI/netstat, which can each take seconds on a
+    // busy system, so it runs on a worker thread — this method is awaited on the UI thread.
     async Task<bool> TryStartSoftRestartAsync()
     {
-        int pid = FindRestartTargetPid();
-        RestartSpec spec;
-        if (pid <= 0 || !TryBuildRestartSpec(pid, out spec))
+        int pid = 0;
+        RestartSpec spec = null;
+        bool prepared = await Task.Run(() =>
+        {
+            int p = FindRestartTargetPid();
+            RestartSpec s;
+            if (p <= 0 || !TryBuildRestartSpec(p, out s)) return false;
+            pid = p;
+            spec = s;
+            return true;
+        }).ConfigureAwait(false);
+        if (!prepared)
             return false;
 
         int helperPid;
@@ -574,9 +651,9 @@ class DshProcess
         return LooksLikeDshOrElevatedNode(pid) ? pid : 0;
     }
 
-    // Rebuild the boot invocation from the live process command line (same idea as dshArgv() in
-    // dshmarket: replay exactly what is running, including execArgv on source launches). The
-    // caller passes the node PID serving the port, NOT the cmd wrapper.
+    // Rebuild the boot invocation from the live process command line: replay exactly what is
+    // running, including execArgv on source launches. The caller passes the node PID serving
+    // the port, NOT the cmd wrapper.
     bool TryBuildRestartSpec(int pid, out RestartSpec spec)
     {
         spec = null;
@@ -599,7 +676,6 @@ class DshProcess
         if (string.IsNullOrEmpty(cwd) || !Directory.Exists(cwd))
             cwd = entry != null ? Path.GetDirectoryName(entry) : null;
         string log = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
-        if (string.IsNullOrEmpty(log)) log = Path.Combine(Path.GetTempPath(), "dsh-harness.log");
         spec = new RestartSpec
         {
             Port = cfg.Port,
@@ -688,7 +764,7 @@ class DshProcess
         }
         Logging.Log("SoftRestart: replacement is up");
         CleanupRestartFiles(specPath);
-        bool adopted = AdoptReplacementProcess();
+        bool adopted = AdoptPortOwnerProcess();
         if (!adopted)
         {
             lock (stateLock)
@@ -713,21 +789,23 @@ class DshProcess
         if (h != null) { try { h.Dispose(); } catch { } }
     }
 
-    // The helper launched the replacement (cmd -> node), so the tray's dshProc still points at
-    // the OLD exited host. Re-bind the process identity to the new host's node PID so crash
-    // detection, stop and status keep working after a soft restart.
-    bool AdoptReplacementProcess()
+    // Bind the tray to the node process actually serving the port: the tracked Process may be
+    // an exited cmd wrapper (after a soft-restart handoff) or entirely absent (adoption of a
+    // harness we did not spawn). Re-bind to the port owner so crash detection, stop and status
+    // keep working. Returns false when no dsh node serves the port or the process cannot be
+    // tracked (e.g. an elevated host); the caller decides which state is then honest.
+    bool AdoptPortOwnerProcess()
     {
         int pid = FindPidOnPort(cfg.Port);
         if (pid <= 0 || !LooksLikeDshOrElevatedNode(pid))
         {
-            Logging.Log("AdoptReplacementProcess: no dsh node on port, skipping");
+            Logging.Log("AdoptPortOwnerProcess: no dsh node on port, skipping");
             return false;
         }
         try
         {
             var p = Process.GetProcessById(pid);
-            if (p == null) { Logging.Log("AdoptReplacementProcess: GetProcessById returned null"); return false; }
+            if (p == null) { Logging.Log("AdoptPortOwnerProcess: GetProcessById returned null"); return false; }
             p.EnableRaisingEvents = true;
             p.Exited += dshProcExited;
             lock (stateLock)
@@ -741,10 +819,10 @@ class DshProcess
                 dshProc = p;
                 lastStartTick = Environment.TickCount;
             }
-            Logging.Log("SoftRestart: adopted new harness process pid=" + pid);
+            Logging.Log("AdoptPortOwnerProcess: adopted harness process pid=" + pid);
             return true;
         }
-        catch (Exception ex) { Logging.Log("AdoptReplacementProcess failed: " + ex.Message); return false; }
+        catch (Exception ex) { Logging.Log("AdoptPortOwnerProcess failed: " + ex.Message); return false; }
     }
 
     void FailSoftRestart()
@@ -817,16 +895,15 @@ class DshProcess
             if (helperFailed) return true;
             if (resultPath != null && File.Exists(resultPath))
             {
-                // Encoding.UTF8 on .NET Framework may prepend a BOM; strip it before comparing.
-                string first = File.ReadAllLines(resultPath, Encoding.UTF8)[0].Trim().TrimStart('\uFEFF');
+                string first = File.ReadAllLines(resultPath, Encoding.UTF8)[0].Trim();
                 if (first == "FAIL") return true;
             }
         }
-        catch { }
+        catch (Exception ex) { Logging.Log("HelperExitedWithFailure probe failed: " + ex.Message); }
         return false;
     }
 
-    // ---- restart-helper support (ported from dshmarket's restart.ts) ----
+    // ---- restart-helper support ----
 
     // Write the respawn spec the detached helper reads. Base64 per line keeps arbitrary
     // args (paths, quotes, metachars) lossless and avoids Windows command-line quoting.
@@ -1035,9 +1112,6 @@ class DshProcess
                     WindowStyle = ProcessWindowStyle.Hidden,
                     WorkingDirectory = wd
                 };
-                psi.EnvironmentVariables["DSH_TRAY_NODE"] = spec.File;
-                psi.EnvironmentVariables["DSH_TRAY_ENTRY"] = spec.Args.Length > 0 ? spec.Args[0] : "";
-                psi.EnvironmentVariables["DSH_TRAY_LOG"] = spec.LogPath ?? "";
                 return Process.Start(psi);
             }
             if (hasPercent && !hasQuote)
@@ -1057,9 +1131,6 @@ class DshProcess
                     WindowStyle = ProcessWindowStyle.Hidden,
                     WorkingDirectory = wd
                 };
-                psi2.EnvironmentVariables["DSH_TRAY_NODE"] = spec.File;
-                psi2.EnvironmentVariables["DSH_TRAY_ENTRY"] = spec.Args.Length > 0 ? spec.Args[0] : "";
-                psi2.EnvironmentVariables["DSH_TRAY_LOG"] = spec.LogPath ?? "";
                 return Process.Start(psi2);
             }
             // A literal double quote cannot be represented safely through our cmd/PowerShell quote
@@ -1075,9 +1146,6 @@ class DshProcess
             CreateNoWindow = true,
             WorkingDirectory = wd
         };
-        psi3.EnvironmentVariables["DSH_TRAY_NODE"] = spec.File;
-        psi3.EnvironmentVariables["DSH_TRAY_ENTRY"] = spec.Args.Length > 0 ? spec.Args[0] : "";
-        psi3.EnvironmentVariables["DSH_TRAY_LOG"] = spec.LogPath ?? "";
         return Process.Start(psi3);
     }
 

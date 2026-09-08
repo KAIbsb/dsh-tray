@@ -718,7 +718,8 @@ class SettingsForm : Form
     // thread-safe BeginInvoke that survives disposal races (the dialog may close mid-download)
     void BeginInvokeSafe(Action a)
     {
-        try { if (!IsDisposed) BeginInvoke(a); } catch { }
+        try { if (!IsDisposed) BeginInvoke(a); }
+        catch (Exception ex) { Logging.Log("BeginInvokeSafe failed: " + ex.Message); }
     }
 
     static void TryCleanup(string path)

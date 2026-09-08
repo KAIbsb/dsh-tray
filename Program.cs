@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
+[assembly: AssemblyVersion("1.3.0.0")]
+[assembly: AssemblyFileVersion("1.3.0.0")]
 [assembly: AssemblyProduct("dsh-tray")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
 
@@ -66,7 +66,7 @@ static class Program
             }
 
             // diagnostic one-shot modes: need full config detection, still early-return
-            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test" || args[1] == "--ui-preview")
+            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test" || args[1] == "--ui-preview" || args[1] == "--resolve-url")
             {
                 Logging.InitLog();
                 Config.InitConfig();
@@ -74,6 +74,7 @@ static class Program
                 if (args[1] == "--find-window") { RunFindWindow(); return; }
                 if (args[1] == "--menu-test") { RunMenuTest(); return; }
                 if (args[1] == "--ui-preview") { RunUiPreview(); return; }
+                if (args[1] == "--resolve-url") { RunResolveUrl(); return; }
             }
         }
 
@@ -125,9 +126,10 @@ static class Program
         return dp;
     }
 
-    // Delete stale auto-update / dev-deploy leftovers next to the exe (e.g. dsh-tray.old.tmp.exe).
-    // Called once at primary-instance startup, at which point the process that owned the file has
-    // exited, so it is normally unlocked. Failures are logged and ignored (never fatal).
+    // Delete stale auto-update / dev-deploy leftovers next to the exe (e.g. dsh-tray.old.tmp.exe)
+    // and stale elevate-*.tmp token files in the data dir. Called once at primary-instance
+    // startup, at which point the process that owned the exe has exited, so it is normally
+    // unlocked. Failures are logged and ignored (never fatal).
     static void CleanupStaleFiles()
     {
         string dir = Path.GetDirectoryName(Application.ExecutablePath);
@@ -135,6 +137,27 @@ static class Program
         string stale = Path.Combine(dir, "dsh-tray.old.tmp.exe");
         try { if (File.Exists(stale)) { File.Delete(stale); Logging.Log("cleanup: removed stale " + stale); } }
         catch (Exception ex) { Logging.Log("cleanup stale exe failed (ignored): " + ex.Message); }
+        // elevation tokens: normally deleted by the helper or the caller; leftovers accumulate
+        // when a UAC prompt is abandoned or the elevated helper crashes. An hour of grace keeps
+        // a token whose UAC prompt is still pending from being removed under a live helper.
+        try
+        {
+            string dataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "dsh-tray");
+            foreach (string token in Directory.GetFiles(dataDir, "elevate-*.tmp"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(token) < DateTime.UtcNow.AddHours(-1))
+                    {
+                        File.Delete(token);
+                        Logging.Log("cleanup: removed stale " + token);
+                    }
+                }
+                catch { }
+            }
+        }
+        catch (Exception ex) { Logging.Log("cleanup elevate tokens failed (ignored): " + ex.Message); }
     }
 
     // ---- headless self-check, writes result next to exe ----
@@ -160,7 +183,11 @@ static class Program
         int p3080 = dp.FindPidOnPort(Config.Current.Port);
         sb.AppendLine("pid on port=" + p3080);
         if (p3080 > 0) sb.AppendLine("pid integrity=" + Win32.GetIntegrity(p3080));
-        sb.AppendLine("SMOKE OK");
+        // the smoke gate is the launch configuration: without node and the dsh entry the tray
+        // cannot fulfill its purpose; port/pid/integrity above are informational (they depend
+        // on whether a harness happens to be running)
+        bool core = File.Exists(Config.Current.NodePath) && File.Exists(Config.Current.DshEntry);
+        sb.AppendLine(core ? "SMOKE OK" : "SMOKE FAIL (node or dsh entry missing)");
         try { File.WriteAllText(report, sb.ToString(), Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunSmoke write report failed: " + ex.Message); }
     }
 
@@ -170,6 +197,15 @@ static class Program
         string report = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "find-window-result.txt");
         string content = WindowMgr.FindWindows();
         try { File.WriteAllText(report, content, Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunFindWindow write failed: " + ex.Message); }
+    }
+
+    // ---- headless: resolve the web URL exactly as OpenWindow would (log parse + auth probe) ----
+    static void RunResolveUrl()
+    {
+        string report = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "resolve-url-result.txt");
+        bool authPending;
+        string url = WindowMgr.ResolveWebUrl(out authPending);
+        try { File.WriteAllText(report, url + " authPending=" + authPending + Environment.NewLine, Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunResolveUrl write failed: " + ex.Message); }
     }
 
     // ---- headless: build the native menu without showing it ----

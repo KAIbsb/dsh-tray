@@ -52,12 +52,15 @@ static class IniFile
         lines.Add(key + "=" + value);
     }
 
-    public static void Save(string path, List<string> lines)
+    // returns false when the write failed (callers that maintain a dependent mirror, such as
+    // the autostart registry key, can then stay consistent with the ini)
+    public static bool Save(string path, List<string> lines)
     {
         try
         {
             File.WriteAllLines(path, lines.ToArray(), Encoding.UTF8);
+            return true;
         }
-        catch (Exception ex) { Logging.Log("IniFile.Save failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("IniFile.Save failed: " + ex.Message); return false; }
     }
 }
