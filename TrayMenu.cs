@@ -123,6 +123,7 @@ static class TrayMenu
             }
             dp.PollAutoRestart();
             await dp.PollSoftRestartAsync(); // heavy WMI/netstat probe runs off the UI thread
+            await dp.PollLivenessAsync();    // cheap loopback probe; degrades an untracked dead host to Stopped
         }
         catch (Exception ex) { Logging.Log("PollTick failed: " + ex.Message); }
         finally { pollBusy = false; UpdateStatus(); }

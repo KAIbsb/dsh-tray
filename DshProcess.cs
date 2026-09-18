@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Management;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -46,6 +47,7 @@ class DshProcess
     const int SoftRestartDeadlineMs = 90000;      // max time to wait for the soft-restart handoff
     const int SoftRestartPortFreeMs = 30000;      // helper: max time to wait for the old port to release
     const int SoftRestartPortUpMs = 20000;        // helper: max time to wait for the replacement to bind
+    const int LivenessFailThreshold = 3;          // consecutive dead-port probes before Running degrades to Stopped
 
     readonly AppConfig cfg;
     readonly object stateLock = new object();
@@ -55,6 +57,7 @@ class DshProcess
     int lastStartTick;
     int lastAutoRestartTick;
     bool autoRestartEnabled;
+    int livenessFailures;                // consecutive dead-port probes while Running (see PollLivenessAsync)
     Win32.IntegrityLevel selfIntegrity;
     // ---- soft restart: a detached helper replays the running host's exact launch ----
     // The tray schedules a detached --restart-helper, lets the old host go, and the helper
@@ -117,6 +120,39 @@ class DshProcess
             return true;
         }
         return false;
+    }
+
+    // Running-state liveness re-verification. The Exited handlers cover every process the tray
+    // CAN track (spawned wrapper, adopted node), but an adopted host whose handle is unreachable
+    // (elevated harness under a Medium tray) stays Running with nobody watching — if it dies, no
+    // event ever fires and the tray would show Running forever. While Running, the poll therefore
+    // re-probes the port: LivenessFailThreshold consecutive dead probes degrade the state to
+    // Stopped, where the existing auto-restart poll takes over. A false degrade is harmless:
+    // StartCore re-adopts when the port turns out to be served after all.
+    public async Task PollLivenessAsync()
+    {
+        lock (stateLock)
+        {
+            // liveness only means something inside a continuous Running episode; any other state
+            // ends the episode (and zeroes the strikes so a fresh Running always starts clean)
+            if (state != DshState.Running) { livenessFailures = 0; return; }
+        }
+        // a dead loopback port refuses instantly, so this is ~free; still off the UI thread
+        // like every other poll probe
+        bool open = await Task.Run(() => PortOpen(cfg.Port)).ConfigureAwait(false);
+        lock (stateLock)
+        {
+            if (state != DshState.Running) { livenessFailures = 0; return; } // stop/restart moved meanwhile
+            if (open) { livenessFailures = 0; return; }
+            livenessFailures++;
+            if (livenessFailures < LivenessFailThreshold) return;
+            livenessFailures = 0;
+            state = DshState.Stopped;
+            // userStopped stays false: a dead harness is not a user stop, so an enabled
+            // auto-restart picks it up on its next tick
+        }
+        Logging.Log("Liveness: port " + cfg.Port + " dead " + LivenessFailThreshold + "x while Running; state=Stopped" +
+            (AutoRestartEnabled ? ", auto-restart will take over" : ", auto-restart is off"));
     }
 
     // Build the cmd wrapper command with %VAR% placeholders. The actual node/entry/log values
@@ -1529,6 +1565,9 @@ class DshProcess
                     if (cmd.IndexOf("@deepseek-ai", StringComparison.OrdinalIgnoreCase) >= 0) return true;
                     if (cmd.IndexOf("bin.js", StringComparison.OrdinalIgnoreCase) >= 0) return true;
                     if (cmd.IndexOf("\\dsh\\", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+                    // a host started outside the tray (npm shim / manual terminal) can carry the
+                    // entry path with forward slashes, which the backslash marker never matches
+                    if (cmd.IndexOf("/dsh/", StringComparison.OrdinalIgnoreCase) >= 0) return true;
                 }
             }
             return false;
@@ -1686,7 +1725,87 @@ class DshProcess
                 }
             }
         }
-        catch (Exception ex) { Logging.Log("FindPidOnPort failed: " + ex.Message); }
-        return 0;
+                catch (Exception ex) { Logging.Log("FindPidOnPort failed: " + ex.Message); }
+                return 0;
+    }
+
+    // ---- headless self-test: --liveness-test ----
+    // Drives the REAL PollLivenessAsync state machine against REAL loopback ports: a held-open
+    // listener plays "harness alive", an OS-assigned-then-released port plays "harness dead".
+    // No sleeps — the poll cadence lives in TrayMenu; the state machine itself is cadence-free,
+    // so consecutive awaited calls stand in for consecutive poll ticks. Returns a
+    // "LIVENESS OK/FAIL (...)" line for the caller to write next to the exe.
+    public static string RunLivenessSelfTest()
+    {
+        var cfg = new AppConfig();
+        var dp = new DshProcess(cfg); // autoRestart defaults to false: no side effects in the test
+        // dead port: grab an OS-assigned port, then release it — nothing listens there now
+        // (.NET Framework 4 TcpListener is not IDisposable: Stop() explicitly)
+        int deadPort;
+        var grab = new TcpListener(IPAddress.Loopback, 0);
+        grab.Start();
+        try { deadPort = ((IPEndPoint)grab.LocalEndpoint).Port; }
+        finally { grab.Stop(); }
+        var live = new TcpListener(IPAddress.Loopback, 0);
+        live.Start();
+        int livePort = ((IPEndPoint)live.LocalEndpoint).Port;
+        var failures = new List<string>();
+        try
+        {
+            // 1. Running + live port: never degrades, however many probes run
+            ForceTestState(dp, cfg, DshState.Running, livePort);
+            for (int i = 0; i < LivenessFailThreshold + 1; i++)
+                dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, "live port keeps Running", dp.State == DshState.Running);
+
+            // 2. Running + dead port: degrades after exactly LivenessFailThreshold strikes
+            ForceTestState(dp, cfg, DshState.Running, deadPort);
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, "1 dead probe stays Running", dp.State == DshState.Running);
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, "2 dead probes stay Running", dp.State == DshState.Running);
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, LivenessFailThreshold + " dead probes degrade to Stopped", dp.State == DshState.Stopped);
+
+            // 3. a fresh Running episode starts from zero strikes (the degrade reset them)
+            ForceTestState(dp, cfg, DshState.Running, deadPort);
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, "fresh Running survives 1 dead probe", dp.State == DshState.Running);
+
+            // 4. a non-Running observation resets the strikes: bank two, pass through Stopped,
+            //    then ONE more dead probe — reset means 1/3 (Running), a leak means 3/3 (Stopped)
+            ForceTestState(dp, cfg, DshState.Running, livePort);
+            dp.PollLivenessAsync().GetAwaiter().GetResult(); // success resets the counter to zero
+            ForceTestState(dp, cfg, DshState.Running, deadPort);
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, "2 banked dead probes stay Running", dp.State == DshState.Running);
+            ForceTestState(dp, cfg, DshState.Stopped, deadPort);
+            dp.PollLivenessAsync().GetAwaiter().GetResult(); // early return must zero the strikes
+            ForceTestState(dp, cfg, DshState.Running, deadPort);
+            dp.PollLivenessAsync().GetAwaiter().GetResult();
+            ExpectTrue(failures, "counter resets across a non-Running gap", dp.State == DshState.Running);
+        }
+        catch (Exception ex)
+        {
+            failures.Add("exception: " + ex.Message);
+        }
+        finally { live.Stop(); }
+        bool ok = failures.Count == 0;
+        return (ok ? "LIVENESS OK (all assertions passed, live=" + livePort + " dead=" + deadPort + ")"
+                   : "LIVENESS FAIL (" + string.Join("; ", failures.ToArray()) + ")");
+    }
+
+    // same-type private access: only the state/port move — the strike counter is deliberately
+    // left alone so the test sequences above control it through the state machine itself
+    static void ForceTestState(DshProcess dp, AppConfig cfg, DshState s, int port)
+    {
+        lock (dp.stateLock) { dp.state = s; }
+        cfg.Port = port;
+    }
+
+    static void ExpectTrue(List<string> failures, string name, bool ok)
+    {
+        if (!ok) failures.Add(name);
     }
 }

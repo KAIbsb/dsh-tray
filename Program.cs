@@ -12,8 +12,8 @@ using System.Windows.Forms;
 
 [assembly: AssemblyTitle("dsh-tray")]
 [assembly: AssemblyDescription("DeepSeek Harness tray lifecycle manager")]
-[assembly: AssemblyVersion("1.3.0.0")]
-[assembly: AssemblyFileVersion("1.3.0.0")]
+[assembly: AssemblyVersion("1.4.0.0")]
+[assembly: AssemblyFileVersion("1.4.0.0")]
 [assembly: AssemblyProduct("dsh-tray")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 KAIbsb")]
 
@@ -66,7 +66,7 @@ static class Program
             }
 
             // diagnostic one-shot modes: need full config detection, still early-return
-            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test" || args[1] == "--ui-preview" || args[1] == "--resolve-url")
+            if (args[1] == "--smoke" || args[1] == "--find-window" || args[1] == "--menu-test" || args[1] == "--ui-preview" || args[1] == "--resolve-url" || args[1] == "--liveness-test")
             {
                 Logging.InitLog();
                 Config.InitConfig();
@@ -75,6 +75,7 @@ static class Program
                 if (args[1] == "--menu-test") { RunMenuTest(); return; }
                 if (args[1] == "--ui-preview") { RunUiPreview(); return; }
                 if (args[1] == "--resolve-url") { RunResolveUrl(); return; }
+                if (args[1] == "--liveness-test") { RunLivenessTest(); return; }
             }
         }
 
@@ -206,6 +207,16 @@ static class Program
         bool authPending;
         string url = WindowMgr.ResolveWebUrl(out authPending);
         try { File.WriteAllText(report, url + " authPending=" + authPending + Environment.NewLine, Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunResolveUrl write failed: " + ex.Message); }
+    }
+
+    // ---- headless: drive the running-state liveness state machine against real ports ----
+    static void RunLivenessTest()
+    {
+        string report = Path.Combine(Path.GetDirectoryName(Application.ExecutablePath), "liveness-test.txt");
+        string result;
+        try { result = DshProcess.RunLivenessSelfTest(); }
+        catch (Exception ex) { result = "LIVENESS FAIL (exception: " + ex.Message + ")"; Logging.Log("liveness selftest crashed: " + ex); }
+        try { File.WriteAllText(report, result + Environment.NewLine, Encoding.UTF8); } catch (Exception ex) { Logging.Log("RunLivenessTest write failed: " + ex.Message); }
     }
 
     // ---- headless: build the native menu without showing it ----

@@ -11,7 +11,7 @@
 ## 项目结构
 
 ```
-Program.cs        入口:Main + headless 分支(--smoke / --menu-test / --find-window / --resolve-url / --ui-preview / --elevated-kill)
+Program.cs        入口:Main + headless 分支(--smoke / --menu-test / --find-window / --resolve-url / --ui-preview / --liveness-test / --elevated-kill / --restart-helper)
 Config.cs         配置单一来源 dshtray.ini:解析、自动探测、注册表镜像
 IniFile.cs        ini 读写小工具(注释行保留,键值就地更新)
 DshProcess.cs     harness 进程状态机:启动/停止/重启/自愈轮询/判活/提权杀
@@ -55,15 +55,29 @@ cmd /c .devtools\build-dev.bat
 
 ## 发布流程
 
-1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.3.0.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
+1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.4.0.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
 2. `git tag vX.Y.Z` 并 `git push --tags`
 3. GitHub Actions 自动编译 → 生成 SHA256 → 创建 Release 并附上 exe 与校验和
+
+## dsh 版本兼容边界
+
+托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,结论零改动兼容;证据存工作区 `fixes/compat-check-20260912/`):
+
+1. **入口文件**:全局包 `lib/bin.js`(0.1.5 改为 hash 分块 bundle,入口名未变;自动探测按此路径)
+2. **`web` 子命令**:launcher 的 commander 定义,`allowUnknownOption` 透传;`--no-open` 由 `--profile web` 的 web-startup 解析,旗标门控见 `VersionSupportsNoOpen`(0.1.0-rc.8 引入)
+3. **启动横幅**:`dsh web: <URL>`(可能带 ` (LAN: …)` 后缀;自动开浏览器时另有一行非 URL 提示)——解析器只认以 http 开头的行,取全文件最后一条
+4. **token 认证**:dsh ≥ 0.1.2 的 303(token 换 cookie)/ 401(未认证)语义,`?token=` 查询参数——`ResolveWebUrl` 的探测三分支依赖它
+5. **默认端口 3080**:仅作判活/端口占用归属;实际打开地址以横幅 URL 为准
+6. **进程标识**:node + 命令行 marker(`@deepseek-ai` / `bin.js` / `\dsh\` / `/dsh/`,最后一项覆盖 npm shim 或手动终端启动产生的正斜杠路径)
+7. **前端窗口标题**:`DeepSeek Harness`(重启后 Ctrl+R 刷新的目标匹配串)
+
+dsh 0.0.1-rc.1/rc.2 依赖未发布的 `dsh-frontend` 包,npm 装不上,声明为不支持;其余已发布版本(0.0.1-rc.5 起)均兼容。
 
 ## 内部机制(修改前必读)
 
 - **harness 启动方式**:通过 `cmd /c node <dsh入口> web >> harness.log 2>&1` 启动,输出重定向到**文件**而非管道。原因:托盘退出时若管道断裂,node 会在 ~1 秒内因 EPIPE 崩溃(已实测),文件重定向让 harness 完全独立于托盘生命周期
 - **异步生命周期**:启动 / 停止 / 重启走 `Task` 异步执行,不阻塞 UI 线程(菜单、左键、轮询始终可响应);图标二态:蓝=运行,白/暗=停止(无闪动),状态变化经变化检测后更新;自愈轮询在异步启动进行中不会重复拉起(防双实例)
-- **判活**:TCP 探测 `127.0.0.1:Port`(默认 3080),且端口占用者必须是 node 进程才判定为运行中(防误判他人进程);PID 解析用 `netstat -ano`(只认 LISTENING 行、本地回环/any 地址)
+- **判活**:TCP 探测 `127.0.0.1:Port`(默认 3080),且端口占用者必须是 node 进程才判定为运行中(防误判他人进程);PID 解析用 `netstat -ano`(只认 LISTENING 行、本地回环/any 地址)。**Running 态还有存活复核**:Exited 事件只覆盖托盘跟得住的进程(拉起的 cmd 包装、采纳的非提权 node),采纳失败的宿主(如管理员启动的 harness)无人挂事件,崩溃后状态会永远卡 Running——轮询因此在 Running 态每 3s 复核端口,连续 3 次探不通才降级 Stopped 交给自动重启;误降级无害(自动重启走 StartCore 时发现端口仍被服务会重新 adopt)。逻辑由 `--liveness-test` 用真实端口做确定性验证
 - **停止 / 重启**:停止仍为 `taskkill /T /F` 杀进程树;若目标进程完整性级别高于自身(如管理员启动的 harness),以管理员身份重跑自身(`--elevated-kill <pid>`)执行杀进程(UAC 为「从不通知」时静默完成)。**重启优先走软重启**:目标 pid 取**端口上的真实 node 进程**(不是 cmd 包装,否则软重启永远退化为硬重启)→ 从该进程 WMI 命令行精确重构启动命令 → 写 `restart-<nonce>.spec` → 拉起脱离进程的 `dsh-tray.exe --restart-helper <spec>` → **先对旧宿主进程树执行上述硬杀**(Windows 上 node 的 `process.kill(SIGTERM)` 只是 TerminateProcess,不会触发 JS 处理器/优雅 dispose,因此不能依赖“优雅关停”);helper 探测端口释放 ≤30s → 空闲后用 `cmd /c` 隐藏回放启动命令(保留原日志语义;PowerShell `-WindowStyle Hidden` 仅在参数含双引号或 % 时回退)→ helper 确认端口由**新 pid(≠ 旧 pid)**绑定才写 OK,失败会杀掉自己拉起的包装树;托盘轮询同样要求端口 pid ≠ 旧 pid 才判定成功,并重新绑定 `dshProc` 保证崩溃自愈/停止仍有效;软重启失败/超时/无法准备时自动回退硬重启。`--restart-helper` 只接受 `%LOCALAPPDATA%\dsh-tray` 下的 `restart-*.spec`,且绕过单实例 mutex(与 `--elevated-kill` 同类)
 - **原生菜单**:`CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`。深色模式靠 `uxtheme.dll` 的 `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)` 跟随系统;弹菜单前 owner 窗口必须置前台(`SetForegroundWindow` + ALT 键技巧),否则菜单无法通过点击外部 / Esc 关闭
 - **窗口自动刷新**:枚举配置的浏览器顶层窗口(进程名取配置的浏览器 + chrome/msedge 兜底),对标题含 "DeepSeek Harness" 的窗口发送 Ctrl+R(先置前台,抢不到焦点则跳过)
@@ -81,6 +95,7 @@ cmd /c .devtools\build-dev.bat
 | `--menu-test` | 构建原生菜单验证(不显示);结果写 `menu-test.txt` |
 | `--find-window` | 列出所有浏览器顶层窗口(只读);结果写 `find-window-result.txt` |
 | `--resolve-url` | 复现"打开窗口"的地址解析:读 harness 日志末条 `dsh web:` 行 + HTTP 探测;结果写 `resolve-url-result.txt`(含 `authPending` 字段) |
+| `--liveness-test` | 自愈盲区自检:对真实回环端口驱动 Running 态存活复核状态机(存活不降级 / 连续 3 次死探针降级 / 计数跨非 Running 态复位);结果写 `liveness-test.txt` |
 | `--ui-preview` | 渲染设置窗口亮/暗两张截图(开发用),输出 `settings-preview-*.png`;可用临时 `dshtray.ini` 的 `lang` 控制语言 |
 | `--elevated-kill <pid>` | 以管理员身份杀进程树(由主程序按需自动调用) |
 
