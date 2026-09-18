@@ -23,7 +23,7 @@ static class UpdateCheck
     // true once a newer version than this build has been discovered (result of the last check)
     public static bool IsNewerAvailable { get { return LatestVersion != null; } }
 
-    // fire-and-forget background check; the caller reads LatestTag/LatestVersion later
+    // fire-and-forget background check; the caller reads LatestVersion later
     public static void CheckOnce(string appVersion)
     {
         ThreadPool.QueueUserWorkItem(delegate { Check(appVersion); });
@@ -92,20 +92,15 @@ static class UpdateCheck
             string dir = Path.GetDirectoryName(destPath);
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
-            // 1. download the binary
-            bool exeOk = false;
-            {
-                ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
-                var req = (HttpWebRequest)WebRequest.Create(DownloadUrl);
-                req.UserAgent = "dsh-tray-update/" + (LatestVersion ?? "unknown");
-                req.Timeout = 60000;
-                req.ReadWriteTimeout = 60000;
-                using (var resp = (HttpWebResponse)req.GetResponse())
-                using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write))
-                    resp.GetResponseStream().CopyTo(fs);
-                exeOk = true;
-            }
-            if (!exeOk) { TryDelete(destPath); return false; }
+            // 1. download the binary (a failure throws and is handled by the catch below)
+            ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
+            var req = (HttpWebRequest)WebRequest.Create(DownloadUrl);
+            req.UserAgent = "dsh-tray-update/" + (LatestVersion ?? "unknown");
+            req.Timeout = 60000;
+            req.ReadWriteTimeout = 60000;
+            using (var resp = (HttpWebResponse)req.GetResponse())
+            using (var fs = new FileStream(destPath, FileMode.Create, FileAccess.Write))
+                resp.GetResponseStream().CopyTo(fs);
 
             // 2. parse the checksum ("<hex>  dsh-tray.exe"); take the first whitespace-delimited token
             string checksumText = GetText(ChecksumUrl, "UpdateCheck checksum fetch");

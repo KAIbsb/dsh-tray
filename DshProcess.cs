@@ -1119,70 +1119,58 @@ class DshProcess
         catch { return false; }
     }
 
-    // Windows default: replay through the same cmd /c ... >> log 2>&1 wrapper the tray uses at
-    // first launch — CreateNoWindow keeps it hidden and the child keeps the original log
-    // semantics (no PowerShell NativeCommandError noise). PowerShell -WindowStyle Hidden remains
-    // the fallback for the (theoretical) case a token contains a double quote, which cmd's
-    // quote grammar cannot represent safely. POSIX keeps a direct spawn.
+    // Windows-only replay (the tray itself only runs on Windows): go through the same
+    // cmd /c ... >> log 2>&1 wrapper the tray uses at first launch — CreateNoWindow keeps it
+    // hidden and the child keeps the original log semantics (no PowerShell NativeCommandError
+    // noise). PowerShell -WindowStyle Hidden remains the fallback for the (theoretical) case a
+    // token contains a double quote, which cmd's quote grammar cannot represent safely.
     static Process SpawnReplacement(RestartSpec spec, out string error)
     {
         error = null;
         string wd = (!string.IsNullOrEmpty(spec.Cwd) && Directory.Exists(spec.Cwd)) ? spec.Cwd : string.Empty;
-        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+        bool hasQuote = ContainsDoubleQuote(spec.File) || ContainsDoubleQuote(spec.LogPath) || ContainsDoubleQuote(spec.Args);
+        bool hasPercent = ContainsPercent(spec.File) || ContainsPercent(spec.LogPath) || ContainsPercent(spec.Args);
+        if (!hasQuote && !hasPercent)
         {
-            bool hasQuote = ContainsDoubleQuote(spec.File) || ContainsDoubleQuote(spec.LogPath) || ContainsDoubleQuote(spec.Args);
-            bool hasPercent = ContainsPercent(spec.File) || ContainsPercent(spec.LogPath) || ContainsPercent(spec.Args);
-            if (!hasQuote && !hasPercent)
+            string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+            if (!File.Exists(cmd)) cmd = "cmd.exe";
+            string inner = CmdQuote(spec.File) + " " + JoinCmdArgs(spec.Args);
+            if (!string.IsNullOrEmpty(spec.LogPath))
+                inner += " >> " + CmdQuote(spec.LogPath) + " 2>&1";
+            var psi = new ProcessStartInfo
             {
-                string cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
-                if (!File.Exists(cmd)) cmd = "cmd.exe";
-                string inner = CmdQuote(spec.File) + " " + JoinCmdArgs(spec.Args);
-                if (!string.IsNullOrEmpty(spec.LogPath))
-                    inner += " >> " + CmdQuote(spec.LogPath) + " 2>&1";
-                var psi = new ProcessStartInfo
-                {
-                    FileName = cmd,
-                    Arguments = "/c \"" + inner + "\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    WorkingDirectory = wd
-                };
-                return Process.Start(psi);
-            }
-            if (hasPercent && !hasQuote)
-            {
-                // cmd.exe would expand %VAR% even inside double quotes; PowerShell single quotes keep it literal.
-                string psCmd = "& " + PwshQuote(spec.File) + " " + JoinPwshArgs(spec.Args);
-                if (!string.IsNullOrEmpty(spec.LogPath))
-                    psCmd += " >> " + PwshQuote(spec.LogPath) + " 2>&1";
-                string powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-                if (!File.Exists(powershell)) powershell = "powershell.exe";
-                var psi2 = new ProcessStartInfo
-                {
-                    FileName = powershell,
-                    Arguments = "-NoProfile -WindowStyle Hidden -Command \"" + psCmd + "\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = false,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    WorkingDirectory = wd
-                };
-                return Process.Start(psi2);
-            }
-            // A literal double quote cannot be represented safely through our cmd/PowerShell quote
-            // framing; fail closed so the tray hard-restarts instead of spawning a mangled command.
-            error = "replay args contain a double quote; soft restart not supported";
-            return null;
+                FileName = cmd,
+                Arguments = "/c \"" + inner + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                WorkingDirectory = wd
+            };
+            return Process.Start(psi);
         }
-        var psi3 = new ProcessStartInfo
+        if (hasPercent && !hasQuote)
         {
-            FileName = spec.File,
-            Arguments = JoinPosixArgs(spec.Args),
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            WorkingDirectory = wd
-        };
-        return Process.Start(psi3);
+            // cmd.exe would expand %VAR% even inside double quotes; PowerShell single quotes keep it literal.
+            string psCmd = "& " + PwshQuote(spec.File) + " " + JoinPwshArgs(spec.Args);
+            if (!string.IsNullOrEmpty(spec.LogPath))
+                psCmd += " >> " + PwshQuote(spec.LogPath) + " 2>&1";
+            string powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
+            if (!File.Exists(powershell)) powershell = "powershell.exe";
+            var psi2 = new ProcessStartInfo
+            {
+                FileName = powershell,
+                Arguments = "-NoProfile -WindowStyle Hidden -Command \"" + psCmd + "\"",
+                UseShellExecute = false,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Hidden,
+                WorkingDirectory = wd
+            };
+            return Process.Start(psi2);
+        }
+        // A literal double quote cannot be represented safely through our cmd/PowerShell quote
+        // framing; fail closed so the tray hard-restarts instead of spawning a mangled command.
+        error = "replay args contain a double quote; soft restart not supported";
+        return null;
     }
 
     static bool ContainsDoubleQuote(string s)
@@ -1237,20 +1225,6 @@ class DshProcess
         {
             if (i > 0) sb.Append(' ');
             sb.Append(PwshQuote(args[i]));
-        }
-        return sb.ToString();
-    }
-
-    static string JoinPosixArgs(string[] args)
-    {
-        var sb = new StringBuilder();
-        for (int i = 0; i < args.Length; i++)
-        {
-            if (i > 0) sb.Append(' ');
-            string a = args[i] ?? "";
-            bool needQuote = a.IndexOf(' ') >= 0 || a.Length == 0;
-            if (needQuote) sb.Append('"').Append(a.Replace("\\", "\\\\").Replace("\"", "\\\"")).Append('"');
-            else sb.Append(a);
         }
         return sb.ToString();
     }
@@ -1725,8 +1699,8 @@ class DshProcess
                 }
             }
         }
-                catch (Exception ex) { Logging.Log("FindPidOnPort failed: " + ex.Message); }
-                return 0;
+        catch (Exception ex) { Logging.Log("FindPidOnPort failed: " + ex.Message); }
+        return 0;
     }
 
     // ---- headless self-test: --liveness-test ----

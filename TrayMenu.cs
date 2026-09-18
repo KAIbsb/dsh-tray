@@ -30,9 +30,6 @@ static class TrayMenu
     static bool lastUpState;             // change-detection: only re-set the icon when the state flips
     static bool lastDarkState;
 
-    // theme flag exposed so Program can log it on startup (set during Init before the tray builds)
-    public static bool DarkMode { get { return darkMode; } }
-
     // dependency injection: Program creates the DshProcess instance and hands it in
     public static void Init(DshProcess process, string version)
     {
@@ -356,12 +353,6 @@ static class TrayMenu
         catch (Exception ex) { Logging.Log("OpenUpdatePage failed: " + ex.Message); }
     }
 
-    // theme change from the settings dialog: refresh tray icon + process-wide uxtheme
-    static void OnSettingsThemeChanged()
-    {
-        ApplyThemeNow();
-    }
-
     // single settings instance: re-focus an open dialog instead of stacking nested modals
     static void OpenSettings()
     {
@@ -370,10 +361,10 @@ static class TrayMenu
             if (openSettings == null || openSettings.IsDisposed)
             {
                 openSettings = new SettingsForm(dp, appVersion);
-                openSettings.ThemeChanged += OnSettingsThemeChanged;
+                openSettings.ThemeChanged += ApplyThemeNow;
                 openSettings.FormClosed += delegate
                 {
-                    openSettings.ThemeChanged -= OnSettingsThemeChanged;
+                    openSettings.ThemeChanged -= ApplyThemeNow;
                     openSettings = null;
                 };
                 openSettings.ShowDialog();

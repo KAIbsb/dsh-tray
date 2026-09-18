@@ -136,7 +136,7 @@ class SettingsForm : Form
         this.dpiOverride = dpiOverride;
         langCode = Config.Current.IniLang ?? "";
         dpi = dpiOverride ?? ((float)DeviceDpi / 96f);
-        if (dpiOverride.HasValue) Ui.SetScale(dpiOverride.Value); else Ui.SetScale(dpi);
+        Ui.SetScale(dpi);
 
         Text = "dsh-tray";
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -657,7 +657,7 @@ class SettingsForm : Form
             bool downloaded = UpdateCheck.DownloadAndVerify(destPath);
             if (!downloaded)
             {
-                TryCleanup(destPath);
+                TryDeleteFile(destPath);
                 BeginInvokeSafe(delegate
                 {
                     autoUpdating = false;
@@ -722,11 +722,6 @@ class SettingsForm : Form
         catch (Exception ex) { Logging.Log("BeginInvokeSafe failed: " + ex.Message); }
     }
 
-    static void TryCleanup(string path)
-    {
-        try { if (File.Exists(path)) File.Delete(path); } catch { }
-    }
-
     static void TryDeleteFile(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
@@ -741,23 +736,13 @@ class SettingsForm : Form
         Task.Run(() =>
         {
             bool newer = UpdateCheck.Check(appVersion);
+            // RestoreDynamicUiState is the single renderer for the check result (also used after
+            // language switches / DPI rebuilds), so the callback only records the outcome
             BeginInvokeSafe(delegate
             {
-                btnCheck.Enabled = true;
                 checkingUpdate = false;
                 checkResult = newer;
-                if (newer)
-                {
-                    lblResult.Text = string.Format(Lang.T("settings.updateAvailable"), UpdateCheck.LatestVersion);
-                    lnkDownload.Visible = true;
-                    btnAutoUpdate.Visible = true;
-                }
-                else
-                {
-                    lblResult.Text = Lang.T("settings.upToDate");
-                    lnkDownload.Visible = false;
-                    btnAutoUpdate.Visible = false;
-                }
+                RestoreDynamicUiState();
             });
         });
     }

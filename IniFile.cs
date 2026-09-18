@@ -3,9 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-// Minimal ini file reader/writer. Leaf class (depends only on Logging for nothing in fact — but
-// kept dependency-free). Comment/empty lines (# or ; prefix) are preserved verbatim and never
-// participate in key matching.
+// Minimal ini file reader/writer. Leaf class (depends only on Logging for error messages).
+// Comment/empty lines (# or ; prefix) are preserved verbatim and never participate in key matching.
 static class IniFile
 {
     public static List<string> Load(string path)

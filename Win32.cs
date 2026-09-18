@@ -90,7 +90,6 @@ static class Win32
 
     public const int PAM_DEFAULT = 0;
     public const int PAM_ALLOW_DARK = 1;
-    public const int PAM_FORCE_DARK = 2;
 
     public static void ApplyAppTheme(bool darkMode)
     {

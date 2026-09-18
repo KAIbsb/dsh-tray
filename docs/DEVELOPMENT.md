@@ -61,10 +61,10 @@ cmd /c .devtools\build-dev.bat
 
 ## dsh 版本兼容边界
 
-托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,结论零改动兼容;证据存工作区 `fixes/compat-check-20260912/`):
+托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,两轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`):
 
 1. **入口文件**:全局包 `lib/bin.js`(0.1.5 改为 hash 分块 bundle,入口名未变;自动探测按此路径)
-2. **`web` 子命令**:launcher 的 commander 定义,`allowUnknownOption` 透传;`--no-open` 由 `--profile web` 的 web-startup 解析,旗标门控见 `VersionSupportsNoOpen`(0.1.0-rc.8 引入)
+2. **`web` 子命令**:rc.2 及之前为 launcher 的 commander 子命令,0.1.6-alpha.1 起改为首位参数展开(`dsh web` ≡ `dsh --profile web`,托盘启动行不变);`--no-open` 由 web-startup 解析,旗标门控见 `VersionSupportsNoOpen`(0.1.0-rc.8 引入)
 3. **启动横幅**:`dsh web: <URL>`(可能带 ` (LAN: …)` 后缀;自动开浏览器时另有一行非 URL 提示)——解析器只认以 http 开头的行,取全文件最后一条
 4. **token 认证**:dsh ≥ 0.1.2 的 303(token 换 cookie)/ 401(未认证)语义,`?token=` 查询参数——`ResolveWebUrl` 的探测三分支依赖它
 5. **默认端口 3080**:仅作判活/端口占用归属;实际打开地址以横幅 URL 为准

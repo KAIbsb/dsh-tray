@@ -21,7 +21,7 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 - **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `harness.log` independent of the tray's lifetime
 - **Auto-refresh on restart**: refreshes the browser app-mode window when a restart finishes
 - **Launch-token authentication**: resolves the boot URL (with token, dsh >= 0.1.2) from `harness.log` and probes it before opening; every open silently renews the 30-day login cookie
-- **Version-adaptive launch**: launch flags follow the installed dsh version (supports dsh 0.0.1-rc.5 and later; audited per release and live-verified through the 0.1.5 line up to 0.1.5-rc.2; 0.0.1-rc.1/rc.2 cannot be installed from npm and are unsupported)
+- **Version-adaptive launch**: launch flags follow the installed dsh version (supports dsh 0.0.1-rc.5 and later; audited per release and live-verified through the 0.1.5 line up to 0.1.5-rc.2; 0.1.6-alpha.1/alpha.2 passed an unpack audit with zero touchpoint changes; 0.0.1-rc.1/rc.2 cannot be installed from npm and are unsupported)
 - **On-demand elevation**: if the harness runs as administrator, the tray elevates itself to kill it (silent when UAC is set to "never notify")
 - **Manual theme**: follow system / light / dark (settings window; ini `theme` key)
 - **Auto-update**: one-click download + sha256 verification + deploy hint from the settings window when a new version is found
