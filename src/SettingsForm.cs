@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -235,8 +234,7 @@ class SettingsForm : Form
                 case RowKind.Labeled:   AddRow(root, rd.BuildLabel(this), c, row); break;
                 default:                AddSpan(root, c, row); break;
             }
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute,
-                rd.BaseH > 0 ? Ui.RowH(rd.BaseH) : c.PreferredSize.Height));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, Ui.RowH(rd.BaseH)));
             row++;
         }
 
@@ -245,11 +243,20 @@ class SettingsForm : Form
         CancelButton = btnClose;
     }
 
+    Font sectionFont; // shared by both section headers; rebuilt (old disposed) on DPI rebuilds
+
+    Font SectionFont()
+    {
+        if (sectionFont != null) sectionFont.Dispose();
+        sectionFont = new Font(Font.FontFamily, 10f, FontStyle.Bold);
+        return sectionFont;
+    }
+
     void CreateControls()
     {
         // ---- section 1: general (bold heading + separator line) ----
         lblSecGeneral = new Label { AutoSize = true };
-        lblSecGeneral.Font = new Font(lblSecGeneral.Font.FontFamily, 10f, FontStyle.Bold);
+        lblSecGeneral.Font = SectionFont();
         lineGeneral = new Panel { Height = Ui.Line(), Dock = DockStyle.Fill };
 
         lblLanguage = new Label { AutoSize = false, Width = Ui.Px(90), Height = Ui.Px(22), TextAlign = ContentAlignment.MiddleLeft };
@@ -305,7 +312,7 @@ class SettingsForm : Form
 
         // ---- section 2: about / updates ----
         lblSecAbout = new Label { AutoSize = true };
-        lblSecAbout.Font = new Font(lblSecAbout.Font.FontFamily, 10f, FontStyle.Bold);
+        lblSecAbout.Font = SectionFont();
         lineAbout = new Panel { Height = Ui.Line(), Dock = DockStyle.Fill };
         lblVersion = new Label { AutoSize = false, Width = Ui.Px(500), Height = Ui.Px(25), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
         lblCurrentUrl = new Label { AutoSize = false, Width = Ui.Px(500), Height = Ui.Px(26), TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
@@ -657,7 +664,7 @@ class SettingsForm : Form
             bool downloaded = UpdateCheck.DownloadAndVerify(destPath);
             if (!downloaded)
             {
-                TryDeleteFile(destPath);
+                UpdateCheck.TryDelete(destPath);
                 BeginInvokeSafe(delegate
                 {
                     autoUpdating = false;
@@ -672,7 +679,7 @@ class SettingsForm : Form
             try
             {
                 bool swapped = false;
-                if (File.Exists(oldPath)) TryDeleteFile(oldPath);
+                if (File.Exists(oldPath)) UpdateCheck.TryDelete(oldPath);
                 try { File.Move(exePath, oldPath); swapped = true; } catch { swapped = false; }
                 if (swapped)
                 {
@@ -720,11 +727,6 @@ class SettingsForm : Form
     {
         try { if (!IsDisposed) BeginInvoke(a); }
         catch (Exception ex) { Logging.Log("BeginInvokeSafe failed: " + ex.Message); }
-    }
-
-    static void TryDeleteFile(string path)
-    {
-        try { if (File.Exists(path)) File.Delete(path); } catch { }
     }
 
     void OnCheckUpdate()

@@ -29,18 +29,19 @@ static class TrayMenu
     static SettingsForm openSettings;
     static bool lastUpState;             // change-detection: only re-set the icon when the state flips
     static bool lastDarkState;
+    static string lastLang;              // tooltip language participates in the same change check
 
     // dependency injection: Program creates the DshProcess instance and hands it in
     public static void Init(DshProcess process, string version)
     {
         dp = process;
         appVersion = version;
-        darkMode = Config.IsDarkMode();
-        Win32.ApplyAppTheme(darkMode);
+        darkMode = SyncTheme();
         // seed the change-detection cache with a forced mismatch so the first UpdateStatus
         // always applies the real icon/text (BuildTray only sets a provisional white icon)
         lastDarkState = !darkMode;
         lastUpState = false;
+        lastLang = Lang.Code;
         Logging.Log("=== dsh-tray v" + version + " started (integrity=" + dp.SelfIntegrity +
             ", autoRestart=" + dp.AutoRestartEnabled + ", darkMode=" + darkMode + ") ===");
         BuildTray();
@@ -92,15 +93,22 @@ static class TrayMenu
     // changes the theme override. The 3s PollTick remains as a fallback (it no-ops when unchanged).
     public static void ApplyThemeNow()
     {
+        darkMode = SyncTheme();
+        if (openSettings != null && !openSettings.IsDisposed) openSettings.ApplyTheme();
+        UpdateStatus();
+    }
+
+    // read the effective theme, apply the process-wide uxtheme state, log a change.
+    // Returns the current dark flag.
+    static bool SyncTheme()
+    {
         bool d = Config.IsDarkMode();
         if (d != darkMode)
         {
-            darkMode = d;
-            Win32.ApplyAppTheme(darkMode);
+            Win32.ApplyAppTheme(darkMode = d);
             Logging.Log("theme applied " + (d ? "dark" : "light"));
         }
-        if (openSettings != null && !openSettings.IsDisposed) openSettings.ApplyTheme();
-        UpdateStatus();
+        return darkMode;
     }
 
     static bool pollBusy; // reentrancy guard for the async poll tick
@@ -150,9 +158,9 @@ static class TrayMenu
         };
     }
 
-    // left click: ensure the harness is up, then open the window (RunAsync handles logging/status).
-    // Starting takes seconds and can fail (missing node/entry): give immediate feedback and a
-    // explicit failure balloon instead of up to 30s of silence followed by a dead page.
+    // left click: ensure the harness is up, then focus an existing harness window (app or web)
+    // or open one. Starting takes seconds and can fail (missing node/entry): give immediate
+    // feedback and an explicit failure balloon instead of up to 30s of silence then a dead page.
     static void StartAndOpen()
     {
         RunAsync(async () =>
@@ -170,7 +178,16 @@ static class TrayMenu
                     return;
                 }
             }
-            WindowMgr.OpenWindow();
+            // a harness window already open (app-mode or active tab): focus it, don't stack a
+            // duplicate window on every click. The probe is EnumWindows + a short sleep: keep
+            // it off the UI thread (OpenWindow parks itself on a worker anyway).
+#pragma warning disable 4014 // fire-and-forget is intentional; RunAsync's finally updates the tray
+            Task.Run(delegate
+            {
+                if (WindowMgr.FocusHarnessWindow()) { Logging.Log("StartAndOpen: focused existing harness window"); return; }
+                WindowMgr.OpenWindow();
+            });
+#pragma warning restore 4014
         }, "start");
     }
 
@@ -218,20 +235,20 @@ static class TrayMenu
     public static List<MenuDef> BuildMenuDefs(DshState st)
     {
         var defs = new List<MenuDef>();
-        defs.Add(new MenuDef(Lang.T("menu.open"), WindowMgr.OpenWindow, true, false));
-        defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-        defs.Add(new MenuDef(Lang.T("menu.start"), delegate { RunAsync(async () => { await dp.StartAsync(); }, "start"); }, st == DshState.Stopped, false));
-        defs.Add(new MenuDef(Lang.T("menu.restart"), delegate { RunAsync(async () => { await dp.RestartAsync(); WindowMgr.ReloadAppWindow(); }, "restart"); }, st == DshState.Running, false));
-        defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { RunAsync(async () => { await dp.StopAsync(); }, "stop"); }, st == DshState.Running || st == DshState.Starting, false));
-        defs.Add(new MenuDef(null, null, true, false) { Separator = true });
-        defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { OpenSettings(); }, true, false));
-        defs.Add(new MenuDef(null, null, true, false) { Separator = true });
+        defs.Add(new MenuDef(Lang.T("menu.open"), WindowMgr.OpenWindow, true));
+        defs.Add(new MenuDef(null, null, true) { Separator = true });
+        defs.Add(new MenuDef(Lang.T("menu.start"), delegate { RunAsync(async () => { await dp.StartAsync(); }, "start"); }, st == DshState.Stopped));
+        defs.Add(new MenuDef(Lang.T("menu.restart"), delegate { RunAsync(async () => { await dp.RestartAsync(); }, "restart"); }, st == DshState.Running));
+        defs.Add(new MenuDef(Lang.T("menu.stop"), delegate { RunAsync(async () => { await dp.StopAsync(); }, "stop"); }, st == DshState.Running || st == DshState.Starting));
+        defs.Add(new MenuDef(null, null, true) { Separator = true });
+        defs.Add(new MenuDef(Lang.T("menu.settings"), delegate { OpenSettings(); }, true));
+        defs.Add(new MenuDef(null, null, true) { Separator = true });
         if (UpdateCheck.IsNewerAvailable)
         {
             defs.Add(new MenuDef(string.Format(Lang.T("menu.downloadUpdate"), UpdateCheck.LatestVersion),
-                delegate { OpenUpdatePage(); }, true, false));
+                delegate { OpenUpdatePage(); }, true));
         }
-        defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true, false));
+        defs.Add(new MenuDef(Lang.T("menu.exit"), ExitApp, true));
         return defs;
     }
 
@@ -263,7 +280,6 @@ static class TrayMenu
             }
             uint flags = Win32.MF_STRING;
             if (!def.Enabled) flags |= Win32.MF_GRAYED;
-            if (def.Checked) flags |= Win32.MF_CHECKED;
             Win32.AppendMenuW(hmenu, flags, id, def.Text);
             actions.Add(def.Action);
             id++;
@@ -292,15 +308,13 @@ static class TrayMenu
         public string Text;
         public Action Action;
         public bool Enabled = true;
-        public bool Checked;
         public bool Separator;
 
-        public MenuDef(string text, Action action, bool enabled, bool check)
+        public MenuDef(string text, Action action, bool enabled)
         {
             Text = text;
             Action = action;
             Enabled = enabled;
-            Checked = check;
         }
     }
 
@@ -337,10 +351,11 @@ static class TrayMenu
         if (tray == null) return;
         // simple two-state icon: blue = running, white/dark = stopped (no flashing)
         bool up = dp.State == DshState.Running;
-        if (up == lastUpState && darkMode == lastDarkState)
+        if (up == lastUpState && darkMode == lastDarkState && Lang.Code == lastLang)
             return; // nothing changed
         lastUpState = up;
         lastDarkState = darkMode;
+        lastLang = Lang.Code;
         Icon use = up ? blueIcon : (darkMode ? whiteIcon : darkIcon);
         if (use != null) tray.Icon = use;
         tray.Text = up ? Lang.T("tray.running") : Lang.T("tray.stopped");

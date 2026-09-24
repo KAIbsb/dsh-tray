@@ -11,18 +11,18 @@
 ## 项目结构
 
 ```
-Program.cs        入口:Main + headless 分支(--smoke / --menu-test / --find-window / --resolve-url / --ui-preview / --liveness-test / --elevated-kill / --restart-helper)
-Config.cs         配置单一来源 dshtray.ini:解析、自动探测、注册表镜像
-IniFile.cs        ini 读写小工具(注释行保留,键值就地更新)
-DshProcess.cs     harness 进程状态机:启动/停止/重启/自愈轮询/判活/提权杀
-WindowMgr.cs      浏览器 APP 窗口:打开、刷新(Ctrl+R)、枚举
-TrayMenu.cs       托盘图标、原生菜单、主题、轮询
-SettingsForm.cs   设置窗口(语言/主题热切换/开关/检查更新与自动更新/关于)
-UpdateCheck.cs    GitHub Releases 版本检查 + 自动更新下载与 sha256 校验(后台静默,TLS 1.2)
-UiFeedback.cs     操作失败 / 信息气泡反馈通道(叶子,事件触发)
-Win32.cs          P/Invoke 声明与暗色主题封装
-Logging.cs        日志写入/轮转(5MB)
-Lang.cs           界面语言表(zh / en)
+src/Program.cs        入口:Main + headless 分支(--smoke / --menu-test / --find-window / --resolve-url / --ui-preview / --liveness-test / --elevated-kill / --restart-helper)
+src/Config.cs         配置单一来源 dshtray.ini:解析、自动探测、注册表镜像
+src/IniFile.cs        ini 读写小工具(注释行保留,键值就地更新)
+src/DshProcess.cs     harness 进程状态机:启动/停止/重启/自愈轮询/判活/提权杀
+src/WindowMgr.cs      浏览器 APP 窗口:打开(16:9 自适应)、枚举、聚焦
+src/TrayMenu.cs       托盘图标、原生菜单、主题、轮询
+src/SettingsForm.cs   设置窗口(语言/主题热切换/开关/检查更新与自动更新/关于)
+src/UpdateCheck.cs    GitHub Releases 版本检查 + 自动更新下载与 sha256 校验(后台静默,TLS 1.2)
+src/UiFeedback.cs     操作失败 / 信息气泡反馈通道(叶子,事件触发)
+src/Win32.cs          P/Invoke 声明与暗色主题封装
+src/Logging.cs        日志写入/轮转(5MB)
+src/Lang.cs           界面语言表(zh / en)
 app.manifest      DPI 感知 + asInvoker 权限清单
 assets/           whale-white.ico(exe 图标)、whale-blue.png / whale-dark.png(状态图标,内嵌资源)
 .github/workflows/ Release 自动化
@@ -55,13 +55,13 @@ cmd /c .devtools\build-dev.bat
 
 ## 发布流程
 
-1. 更新版本号:`Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.4.0.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
+1. 更新版本号:`src/Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.5.0.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
 2. `git tag vX.Y.Z` 并 `git push --tags`
 3. GitHub Actions 自动编译 → 生成 SHA256 → 创建 Release 并附上 exe 与校验和
 
 ## dsh 版本兼容边界
 
-托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,两轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`):
+托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,2026-09-24 已对 0.1.7-alpha.1/alpha.2/rc.1 解包审计 + 0.1.7-alpha.2 实测,三轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`、`fixes/compat-check-20260924/`):
 
 1. **入口文件**:全局包 `lib/bin.js`(0.1.5 改为 hash 分块 bundle,入口名未变;自动探测按此路径)
 2. **`web` 子命令**:rc.2 及之前为 launcher 的 commander 子命令,0.1.6-alpha.1 起改为首位参数展开(`dsh web` ≡ `dsh --profile web`,托盘启动行不变);`--no-open` 由 web-startup 解析,旗标门控见 `VersionSupportsNoOpen`(0.1.0-rc.8 引入)
@@ -69,7 +69,7 @@ cmd /c .devtools\build-dev.bat
 4. **token 认证**:dsh ≥ 0.1.2 的 303(token 换 cookie)/ 401(未认证)语义,`?token=` 查询参数——`ResolveWebUrl` 的探测三分支依赖它
 5. **默认端口 3080**:仅作判活/端口占用归属;实际打开地址以横幅 URL 为准
 6. **进程标识**:node + 命令行 marker(`@deepseek-ai` / `bin.js` / `\dsh\` / `/dsh/`,最后一项覆盖 npm shim 或手动终端启动产生的正斜杠路径)
-7. **前端窗口标题**:`DeepSeek Harness`(重启后 Ctrl+R 刷新的目标匹配串)
+7. **前端窗口标题**:`DeepSeek Harness`(单击聚焦已有窗口的目标匹配串;APP 窗口与网页标签通用)
 
 dsh 0.0.1-rc.1/rc.2 依赖未发布的 `dsh-frontend` 包,npm 装不上,声明为不支持;其余已发布版本(0.0.1-rc.5 起)均兼容。
 
@@ -80,7 +80,7 @@ dsh 0.0.1-rc.1/rc.2 依赖未发布的 `dsh-frontend` 包,npm 装不上,声明�
 - **判活**:TCP 探测 `127.0.0.1:Port`(默认 3080),且端口占用者必须是 node 进程才判定为运行中(防误判他人进程);PID 解析用 `netstat -ano`(只认 LISTENING 行、本地回环/any 地址)。**Running 态还有存活复核**:Exited 事件只覆盖托盘跟得住的进程(拉起的 cmd 包装、采纳的非提权 node),采纳失败的宿主(如管理员启动的 harness)无人挂事件,崩溃后状态会永远卡 Running——轮询因此在 Running 态每 3s 复核端口,连续 3 次探不通才降级 Stopped 交给自动重启;误降级无害(自动重启走 StartCore 时发现端口仍被服务会重新 adopt)。逻辑由 `--liveness-test` 用真实端口做确定性验证
 - **停止 / 重启**:停止仍为 `taskkill /T /F` 杀进程树;若目标进程完整性级别高于自身(如管理员启动的 harness),以管理员身份重跑自身(`--elevated-kill <pid>`)执行杀进程(UAC 为「从不通知」时静默完成)。**重启优先走软重启**:目标 pid 取**端口上的真实 node 进程**(不是 cmd 包装,否则软重启永远退化为硬重启)→ 从该进程 WMI 命令行精确重构启动命令 → 写 `restart-<nonce>.spec` → 拉起脱离进程的 `dsh-tray.exe --restart-helper <spec>` → **先对旧宿主进程树执行上述硬杀**(Windows 上 node 的 `process.kill(SIGTERM)` 只是 TerminateProcess,不会触发 JS 处理器/优雅 dispose,因此不能依赖“优雅关停”);helper 探测端口释放 ≤30s → 空闲后用 `cmd /c` 隐藏回放启动命令(保留原日志语义;PowerShell `-WindowStyle Hidden` 仅在参数含双引号或 % 时回退)→ helper 确认端口由**新 pid(≠ 旧 pid)**绑定才写 OK,失败会杀掉自己拉起的包装树;托盘轮询同样要求端口 pid ≠ 旧 pid 才判定成功,并重新绑定 `dshProc` 保证崩溃自愈/停止仍有效;软重启失败/超时/无法准备时自动回退硬重启。`--restart-helper` 只接受 `%LOCALAPPDATA%\dsh-tray` 下的 `restart-*.spec`,且绕过单实例 mutex(与 `--elevated-kill` 同类)
 - **原生菜单**:`CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`。深色模式靠 `uxtheme.dll` 的 `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)` 跟随系统;弹菜单前 owner 窗口必须置前台(`SetForegroundWindow` + ALT 键技巧),否则菜单无法通过点击外部 / Esc 关闭
-- **窗口自动刷新**:枚举配置的浏览器顶层窗口(进程名取配置的浏览器 + chrome/msedge 兜底),对标题含 "DeepSeek Harness" 的窗口发送 Ctrl+R(先置前台,抢不到焦点则跳过)
+- **窗口打开与聚焦**:「打开窗口」用 `chrome --app=<url>` 拉起 APP 模式窗口,几何参数 `--window-size/--window-position` 按 `SPI_GETWORKAREA` 主屏工作区 90% 高的 16:9 居中(清单是 DPI 感知的,值为物理像素;探测失败回退 Chrome 默认);ini `openmode=browser` 时跳过 APP 模式走默认浏览器标签页。**不再自动刷新页面**:dsh 前端自 0.0.1-rc.5 起自带断线重连(连接状态机),重启后页面自己恢复,强制刷新只会造成主题闪烁;插件前端更新后由用户手动 Ctrl+R。**单击聚焦**:`FocusHarnessWindow` 枚举浏览器顶层窗口、标题含 "DeepSeek Harness"(APP 窗口与活动标签通用,后台标签探测不到)即置前台,没有才开新窗口,防重复堆窗
 - **配置**:`dshtray.ini` 是**唯一配置源**(见 README「配置」)——自动重启 / 开机自启也存于此文件;开机自启的 ini 值在启动时镜像到注册表 Run 键;历史注册表值(`Software\dsh-tray\AutoRestart`)启动时自动迁移一次。node / dsh / chrome 路径留空自动探测(PATH、常见安装路径、npm 全局目录)。`theme` 键(light/dark/空=跟随系统)为手动主题覆盖,优先于注册表
 - **更新检查 / 自动更新**:启动时后台静默请求一次 GitHub Releases API(失败静默,仅日志),发现新版在菜单与设置窗展示;设置窗「自动更新」一键 `UpdateCheck.DownloadAndVerify`(下载 exe + sha256 校验),运行中 exe 被锁时保留已校验的 `.new` 并提示手动替换
 - **操作反馈**:`UiFeedback` 事件通道(`Fail` 失败 / `Info` 信息),TrayMenu 订阅后弹 4 秒气泡(Error / Info 图标);仅「用户主动操作失败 / 更新就绪」使用,启动失败、提权失败等被动路径不弹

@@ -28,7 +28,7 @@ static class Win32
     // NONCLIENT(0x02) | CLIENT(0x04) | ERASEBKGND(0x08) | CHILDREN(0x10)
     public const int PRF_ALL = 0x1E;
 
-    // ---- window reload (refresh the Chrome app window) ----
+    // ---- window enumeration / focus ----
     [DllImport("user32.dll")]
     public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
@@ -44,6 +44,14 @@ static class Win32
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+
+    // ---- primary work area (taskbar-aware screen bounds, for app-window geometry) ----
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")]
+    public static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref RECT pvParam, uint fWinIni);
+    public const uint SPI_GETWORKAREA = 0x0030;
+
     [DllImport("user32.dll")]
     public static extern bool DestroyIcon(IntPtr hIcon);
 
@@ -60,7 +68,6 @@ static class Win32
     public const uint MF_STRING = 0x0000;
     public const uint MF_SEPARATOR = 0x0800;
     public const uint MF_GRAYED = 0x0001;
-    public const uint MF_CHECKED = 0x0008;
     public const uint TPM_RIGHTBUTTON = 0x0002;
     public const uint TPM_RETURNCMD = 0x0100;
 
@@ -102,9 +109,7 @@ static class Win32
         catch (Exception ex) { Logging.Log("ApplyAppTheme failed: " + ex.Message); }
     }
 
-    public const byte VK_CONTROL = 0x11;
     public const byte VK_MENU = 0x12;
-    public const byte VK_R = 0x52;
     public const uint KEYEVENTF_KEYUP = 0x0002;
 
     public enum IntegrityLevel { Unknown = 0, Low = 4096, Medium = 8192, High = 12288, System = 16384 }

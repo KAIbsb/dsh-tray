@@ -1,6 +1,4 @@
 using System;
-using System.Windows.Forms;
-
 // Unified DPI layout helper for hand-built forms. The settings dialog deliberately uses
 // AutoScaleMode.None + this helper: TableLayoutPanel Absolute row/column styles do not follow
 // AutoScaleMode.Dpi, and mixing manual Sp() with AutoScaleMode.Dpi double-scales explicit
@@ -13,11 +11,6 @@ static class Ui
     public static void SetScale(float s)
     {
         scale = (s > 0f) ? s : 1f;
-    }
-
-    public static void Init(Control c)
-    {
-        SetScale(c.DeviceDpi / 96f);
     }
 
     // generic layout pixel (width/height/margin/padding)

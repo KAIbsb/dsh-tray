@@ -42,3 +42,7 @@ dshworkdir=
 ; Chromium 系浏览器可执行文件(留空 = 自动查找 Chrome / Edge)
 ; Chromium-family browser exe (empty = auto-detect Chrome / Edge)
 chrome=
+
+; 打开方式:app(Chromium APP 独立窗口,默认)/ browser(默认浏览器普通标签页)
+; Open mode: app (standalone Chromium app window, default) / browser (plain tab in the default browser)
+openmode=

@@ -162,9 +162,10 @@ class DshProcess
     public string BuildLaunchCmd(bool passNoOpen)
     {
         // dsh web (0.1.0-rc.8+) opens the browser by default; --no-open keeps that from spawning
-        // a new tab on every start/restart (the tray's own ReloadAppWindow refreshes the existing
-        // app window). Older versions reject the flag and die before printing their banner, so
-        // the caller gates it on the installed dsh version (DshSupportsNoOpen).
+        // a new tab on every start/restart (the running web page recovers via the client's own
+        // auto-reconnect, it needs no reload). Older versions reject the flag and die before
+        // printing their banner, so the caller gates it on the installed dsh version
+        // (DshSupportsNoOpen).
         string args = passNoOpen ? " --no-open" : "";
         return "/c \"\"%DSH_TRAY_NODE%\" \"%DSH_TRAY_ENTRY%\" web" + args + " >> \"%DSH_TRAY_LOG%\" 2>&1\"";
     }
@@ -289,7 +290,11 @@ class DshProcess
             Process proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
             proc.Exited += dshProcExited;
             proc.Start();
-            lock (stateLock) { dshProc = proc; }
+            lock (stateLock)
+            {
+                DisposeDshProcLocked(); // stale handle from a liveness-degraded host: release it
+                dshProc = proc;
+            }
             Logging.Log("StartDsh: launched pid=" + proc.Id + " (log=" + dshLog + ")");
             return StartResult.Launched;
         }
@@ -446,6 +451,9 @@ class DshProcess
     // continuation after the Starting handoff: shared by StartAsync and PollAutoRestart
     async Task StartFlow()
     {
+        // a StopAsync that raced the Task.Run scheduling gap has already moved Starting->Stopping:
+        // spawning here would leak a live harness behind a Stopped state, so cancel instead
+        lock (stateLock) { if (state != DshState.Starting) return; }
         StartResult r = StartCore(); // synchronous spawn (fast, non-blocking); no closure needed
         if (r == StartResult.AlreadyUp)
         {
@@ -712,15 +720,40 @@ class DshProcess
         if (string.IsNullOrEmpty(cwd) || !Directory.Exists(cwd))
             cwd = entry != null ? Path.GetDirectoryName(entry) : null;
         string log = Path.Combine(Path.GetDirectoryName(Logging.LogPath), "harness.log");
+        string[] args = toks.GetRange(1, toks.Count - 1).ToArray();
+        // lineage normalization: a host started outside the tray (manual terminal, upgrade tool)
+        // may lack --no-open, and replaying it verbatim re-opens a browser tab on every restart.
+        // A web-profile boot always wants the flag suppressed once the version supports it —
+        // the same thing StartCore does for its own spawns.
+        if (IsWebBoot(args) && DshSupportsNoOpen() && Array.IndexOf(args, "--no-open") < 0)
+        {
+            Array.Resize(ref args, args.Length + 1);
+            args[args.Length - 1] = "--no-open";
+            Logging.Log("RestartSpec: replay lacked --no-open, appending");
+        }
         spec = new RestartSpec
         {
             Port = cfg.Port,
             File = file,
             Cwd = cwd,
             LogPath = log,
-            Args = toks.GetRange(1, toks.Count - 1).ToArray()
+            Args = args
         };
         return true;
+    }
+
+    // Does this argv boot the web profile? Either the `web` invocation word or an explicit
+    // `--profile web` pair. Only then does the replay dare append flags the web app understands.
+    static bool IsWebBoot(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (string.Equals(args[i], "web", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(args[i], "--profile", StringComparison.OrdinalIgnoreCase) &&
+                i + 1 < args.Length && string.Equals(args[i + 1], "web", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     // The argv token that is the actual dsh entry: prefer the configured entry, then a .js/.ts
@@ -913,26 +946,17 @@ class DshProcess
     {
         try
         {
-            string resultPath = null;
-            bool helperFailed = false;
             lock (stateLock)
             {
-                resultPath = softRestartSpecPath == null ? null : softRestartSpecPath + ".result";
                 Process h = restartHelper;
                 if (h != null)
                 {
                     try
                     {
-                        if (h.HasExited && h.ExitCode != 0) helperFailed = true;
+                        if (h.HasExited && h.ExitCode != 0) return true;
                     }
                     catch { /* process already disposed; not a failure signal */ }
                 }
-            }
-            if (helperFailed) return true;
-            if (resultPath != null && File.Exists(resultPath))
-            {
-                string first = File.ReadAllLines(resultPath, Encoding.UTF8)[0].Trim();
-                if (first == "FAIL") return true;
             }
         }
         catch (Exception ex) { Logging.Log("HelperExitedWithFailure probe failed: " + ex.Message); }
@@ -996,17 +1020,6 @@ class DshProcess
         catch { return ""; }
     }
 
-    static void WriteRestartResult(string specPath, bool ok, string message)
-    {
-        if (string.IsNullOrEmpty(specPath)) return;
-        try
-        {
-            File.WriteAllText(specPath + ".result",
-                (ok ? "OK" : "FAIL") + Environment.NewLine + (message ?? ""), Encoding.UTF8);
-        }
-        catch (Exception ex) { Logging.Log("WriteRestartResult failed: " + ex.Message); }
-    }
-
     static void CleanupRestartFiles(string specPath)
     {
         if (string.IsNullOrEmpty(specPath)) return;
@@ -1025,14 +1038,12 @@ class DshProcess
         if (!IsTrustedRestartSpecPath(specPath))
         {
             Logging.Log("RestartHelper: refusing untrusted spec path");
-            WriteRestartResult(specPath, false, "untrusted spec path");
             CleanupRestartFiles(specPath);
             return false;
         }
         RestartSpec spec = ReadRestartSpec(specPath);
         if (spec == null)
         {
-            WriteRestartResult(specPath, false, "spec unreadable");
             CleanupRestartFiles(specPath);
             return false;
         }
@@ -1061,14 +1072,12 @@ class DshProcess
         {
             err = ex.Message;
             Logging.Log("RestartHelper: spawn failed: " + err);
-            WriteRestartResult(specPath, false, "spawn failed: " + err);
             CleanupRestartFiles(specPath);
             return false;
         }
         if (replacement == null)
         {
             Logging.Log("RestartHelper: no replacement (" + (err ?? "unknown") + ")");
-            WriteRestartResult(specPath, false, err ?? "spawn failed");
             CleanupRestartFiles(specPath);
             return false;
         }
@@ -1091,12 +1100,9 @@ class DshProcess
             Logging.Log("RestartHelper: port not rebound by a NEW process; killing wrapper pid=" + replacement.Id);
             try { dp.KillTree(replacement.Id); }
             catch (Exception ex) { Logging.Log("RestartHelper: kill replacement failed: " + ex.Message); }
-            WriteRestartResult(specPath, false,
-                "old host did not release the port or the replacement did not bind as a new pid");
             CleanupRestartFiles(specPath);
             return false;
         }
-        WriteRestartResult(specPath, true, "");
         CleanupRestartFiles(specPath);
         return true;
     }
@@ -1401,6 +1407,7 @@ class DshProcess
         // may still be alive: a slow UAC approval (>30s) would otherwise make the approved helper
         // find a missing token and refuse the kill. Only clean up when we know it is not running.
         bool helperAlive = false;
+        Process p = null;
         try
         {
             try
@@ -1417,7 +1424,6 @@ class DshProcess
                 UseShellExecute = true,
                 Verb = "runas"
             };
-            Process p = null;
             try { p = Process.Start(psi); helperAlive = (p != null); }
             catch (Exception ex) { Logging.Log("elevated kill launch failed (UAC declined?): " + ex.Message); }
             if (p != null)
@@ -1450,6 +1456,7 @@ class DshProcess
             {
                 try { File.Delete(tokenPath); } catch { }
             }
+            if (p != null) { try { p.Dispose(); } catch { } }
         }
     }
 
@@ -1526,30 +1533,24 @@ class DshProcess
     // (and anything non-node) are still refused.
     bool CommandLineLooksLikeDsh(int pid)
     {
+        // markers instead of the exact current entry path, so a harness started by an older
+        // build or a different install can still be stopped, while arbitrary node processes
+        // (and anything non-node) are still refused. Reuses the shared WMI reader; the markers
+        // contain no spaces or quotes, so rejoining the argv tokens is lossless for them.
         try
         {
-            using (var searcher = new ManagementObjectSearcher(
-                "SELECT CommandLine FROM Win32_Process WHERE ProcessId=" + pid))
-            {
-                foreach (ManagementObject obj in searcher.Get())
-                {
-                    object cl = obj["CommandLine"];
-                    if (cl == null) continue;
-                    string cmd = cl.ToString();
-                    if (cmd.IndexOf("@deepseek-ai", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                    if (cmd.IndexOf("bin.js", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                    if (cmd.IndexOf("\\dsh\\", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                    // a host started outside the tray (npm shim / manual terminal) can carry the
-                    // entry path with forward slashes, which the backslash marker never matches
-                    if (cmd.IndexOf("/dsh/", StringComparison.OrdinalIgnoreCase) >= 0) return true;
-                }
-            }
-            return false;
+            List<string> toks;
+            if (!TryReadCommandLine(pid, out toks)) return false;
+            string cmd = string.Join(" ", toks.ToArray());
+            return cmd.IndexOf("@deepseek-ai", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   cmd.IndexOf("bin.js", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   cmd.IndexOf("\\dsh\\", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   cmd.IndexOf("/dsh/", StringComparison.OrdinalIgnoreCase) >= 0;
         }
-        catch (Exception ex) { Logging.Log("elevated kill WMI query failed: " + ex.Message); return false; }
+        catch (Exception ex) { Logging.Log("CommandLineLooksLikeDsh WMI query failed: " + ex.Message); return false; }
     }
 
-    string Taskkill(int pid)
+    void Taskkill(int pid)
     {
         try
         {
@@ -1575,21 +1576,17 @@ class DshProcess
                 }
                 string outp = readOut.Result;
                 string err = readErr.Result;
-                string msg = "taskkill pid=" + pid + " exit=" + p.ExitCode +
-                    " out=" + outp.Trim() + " err=" + err.Trim();
-                Logging.Log(msg);
-                return msg;
+                Logging.Log("taskkill pid=" + pid + " exit=" + p.ExitCode +
+                    " out=" + outp.Trim() + " err=" + err.Trim());
             }
         }
         catch (Exception ex)
         {
-            string msg = "taskkill pid=" + pid + " exception: " + ex.Message;
-            Logging.Log(msg);
-            return msg;
+            Logging.Log("taskkill pid=" + pid + " exception: " + ex.Message);
         }
     }
 
-    bool TryProcessKill(int pid)
+    void TryProcessKill(int pid)
     {
         try
         {
@@ -1599,12 +1596,10 @@ class DshProcess
                 p.WaitForExit(ProcessWaitExitMs);
             }
             Logging.Log("Process.Kill pid=" + pid + " ok");
-            return true;
         }
         catch (Exception ex)
         {
             Logging.Log("Process.Kill pid=" + pid + " failed: " + ex.Message);
-            return false;
         }
     }
 
@@ -1658,6 +1653,21 @@ class DshProcess
                localAddr == "[::1]" || localAddr == "[::]";
     }
 
+    // one netstat row -> local-listener pid, or 0. Requires the LOCAL column to end with
+    // ":port" on a loopback/any address, so remote endpoints never match (see IsLocalListenAddress).
+    int ParseLocalListenerPid(string line, int port)
+    {
+        string[] cols = line.Split(new[] { ' ', '	' }, StringSplitOptions.RemoveEmptyEntries);
+        if (cols.Length < 5) return 0;
+        string localAddr = cols[1];
+        string portSuffix = ":" + port;
+        if (!localAddr.EndsWith(portSuffix, StringComparison.Ordinal)) return 0;
+        string addrHost = localAddr.Substring(0, localAddr.Length - portSuffix.Length);
+        if (!IsLocalListenAddress(addrHost)) return 0;
+        int pid;
+        return int.TryParse(cols[cols.Length - 1], out pid) ? pid : 0;
+    }
+
     public int FindPidOnPort(int port)
     {
         try
@@ -1680,22 +1690,21 @@ class DshProcess
                 }
                 string output = readOut.Result;
                 string[] lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+                // pass 1 matches the state literal; pass 2 covers localized Windows builds where
+                // the state word is not "LISTENING": there, a row whose LOCAL column is a
+                // loopback/any ":port" endpoint still names the listener (its PID owns the local
+                // socket; TIME_WAIT rows carry pid 0 and are skipped by the >0 check)
                 foreach (string line in lines)
                 {
-                    // only LISTENING lines carry a local listener; skip ESTABLISHED/other states
                     if (line.IndexOf("LISTENING", StringComparison.Ordinal) < 0) continue;
-                    string[] cols = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
-                    // expected netstat -ano tcp columns: Proto LocalAddress ForeignAddress State PID
-                    if (cols.Length < 5) continue;
-                    string localAddr = cols[1]; // local address column, e.g. "127.0.0.1:3080" or "[::1]:3080"
-                    string portSuffix = ":" + port;
-                    // require the local address to END with ":port" and be a loopback/any address,
-                    // so a remote "1.2.3.4:3080" (ESTABLISHED) or an unrelated local IP is never matched
-                    if (!localAddr.EndsWith(portSuffix, StringComparison.Ordinal)) continue;
-                    string addrHost = localAddr.Substring(0, localAddr.Length - portSuffix.Length);
-                    if (!IsLocalListenAddress(addrHost)) continue;
-                    int pid;
-                    if (int.TryParse(cols[cols.Length - 1], out pid)) return pid;
+                    int pid = ParseLocalListenerPid(line, port);
+                    if (pid > 0) return pid;
+                }
+                foreach (string line in lines)
+                {
+                    if (line.IndexOf("LISTENING", StringComparison.Ordinal) >= 0) continue;
+                    int pid = ParseLocalListenerPid(line, port);
+                    if (pid > 0) return pid;
                 }
             }
         }

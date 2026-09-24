@@ -8,8 +8,6 @@ using System.Threading;
 // results are read later by the caller. Failures are logged and swallowed.
 static class UpdateCheck
 {
-    public const string RepoOwner = "KAIbsb";
-    public const string RepoName = "dsh-tray";
     public const string ReleasesApiUrl = "https://api.github.com/repos/KAIbsb/dsh-tray/releases/latest";
     public const string ReleasesPageUrl = "https://github.com/KAIbsb/dsh-tray/releases/latest";
 
@@ -135,7 +133,7 @@ static class UpdateCheck
         }
     }
 
-    static void TryDelete(string path)
+    public static void TryDelete(string path)
     {
         try { if (File.Exists(path)) File.Delete(path); } catch { }
     }

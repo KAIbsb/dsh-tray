@@ -13,15 +13,16 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 ## Features
 
 - **Lifecycle management**: start / restart / stop / exit, all from the tray menu; **restart prefers the soft restart** (replay the exact boot invocation of the running host, hand off through a detached helper that waits for the port to release, then relaunch), falling back to the hard restart on failure
-- **Single-click tray icon**: starts the harness and opens the window if it's not running; opens the window directly if it is
+- **Single-click tray icon**: starts the harness when it's down; focuses an already-open DSH window (app-mode or web tab) instead of stacking duplicates, opening one only when none exists
 - **Status icon**: blue whale while running; black/white whale when stopped, switching with the system light/dark theme in real time
 - **Auto-restart on crash** (toggleable): brings the harness back up after an unexpected exit, with cooldowns to prevent restart loops
 - **Start with Windows** (toggleable): writes `HKCU\...\Run`, no admin rights needed
 - **Native system menu**: Windows 11 rounded theme, follows the dark mode automatically
 - **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `harness.log` independent of the tray's lifetime
-- **Auto-refresh on restart**: refreshes the browser app-mode window when a restart finishes
+- **Zero-friction restarts**: an open page recovers by itself via the dsh client's built-in auto-reconnect — the tray never force-reloads it (no reload flash); press Ctrl+R once after a plugin frontend update
+- **16:9 app window**: the app-mode window opens centered at 16:9 fitting 90% of the primary work area instead of the browser's arbitrary default
 - **Launch-token authentication**: resolves the boot URL (with token, dsh >= 0.1.2) from `harness.log` and probes it before opening; every open silently renews the 30-day login cookie
-- **Version-adaptive launch**: launch flags follow the installed dsh version (supports dsh 0.0.1-rc.5 and later; audited per release and live-verified through the 0.1.5 line up to 0.1.5-rc.2; 0.1.6-alpha.1/alpha.2 passed an unpack audit with zero touchpoint changes; 0.0.1-rc.1/rc.2 cannot be installed from npm and are unsupported)
+- **Version-adaptive launch**: launch flags follow the installed dsh version (supports dsh 0.0.1-rc.5 and later; audited per release and live-verified through the 0.1.5 line up to 0.1.5-rc.2; 0.1.6-alpha.1/alpha.2 and 0.1.7-alpha.1/alpha.2/rc.1 passed unpack audits with zero touchpoint changes; 0.0.1-rc.1/rc.2 cannot be installed from npm and are unsupported)
 - **On-demand elevation**: if the harness runs as administrator, the tray elevates itself to kill it (silent when UAC is set to "never notify")
 - **Manual theme**: follow system / light / dark (settings window; ini `theme` key)
 - **Auto-update**: one-click download + sha256 verification + deploy hint from the settings window when a new version is found
@@ -46,11 +47,9 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 | DeepSeek Harness | install it per the [DeepSeek-Harness repo](https://github.com/deepseek-ai/DeepSeek-Harness) |
 | Browser (Chromium-based: Chrome / Edge) | optional, for the browser app-mode window |
 
-### 2. Create a browser app-mode window (optional but recommended)
+### 2. Open mode: app window (default) or plain tab
 
-The harness Web UI lives at `http://127.0.0.1:3080`. To keep it out of your browser tabs, turn it into a standalone browser app-mode window (how to create one is left to you — search "browser app mode").
-
-The tray's "Open Window" menu item will then launch this window. Closing it does not affect the harness — click the tray icon to reopen it anytime.
+The harness Web UI lives at `http://127.0.0.1:3080`. The tray's "Open Window" opens it as a standalone Chromium app-mode window by default (16:9 fitted to your screen, kept out of your tabs); if you prefer a plain browser tab, set `openmode=browser` in `dshtray.ini`. Closing the window does not affect the harness — click the tray icon to reopen it anytime.
 
 ### 3. Run dsh-tray
 
@@ -103,6 +102,7 @@ node =                        # path to node.exe; empty = auto-detect
 dshentry =                    # path to the dsh entry script; empty = auto-detect
 dshworkdir =                  # dsh working directory; empty = inferred
 chrome =                      # Chromium-family browser path; empty = auto-detect Chrome/Edge
+openmode =                    # open mode: app (standalone app window, default) / browser (plain tab)
 ```
 
 An empty line means the default / auto-detection for that item (node / dsh entry / browser resolve via PATH, common install paths, npm global directory); deleting or commenting a line works the same. `url` is the only port setting (the port is derived from it). `autostart` is the single source for start-with-Windows; the Windows startup key is only a mirror (synced from the file at startup). The `theme` manual theme (light/dark) takes precedence over the system setting; empty = follow the system.

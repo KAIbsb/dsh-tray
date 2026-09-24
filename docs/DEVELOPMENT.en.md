@@ -11,18 +11,18 @@ Repository structure and development guide for dsh-tray — for developers who w
 ## Repository layout
 
 ```
-Program.cs        entry: Main + headless modes (--smoke / --menu-test / --find-window / --resolve-url / --ui-preview / --elevated-kill)
-Config.cs         single config source dshtray.ini: parsing, auto-detection, registry mirror
-IniFile.cs        minimal ini reader/writer (comments preserved, keys updated in place)
-DshProcess.cs     harness process state machine: start/stop/restart/self-heal poll/liveness/elevated kill
-WindowMgr.cs      browser app window: open, reload (Ctrl+R), enumerate
-TrayMenu.cs       tray icon, native menu, theme, poll
-SettingsForm.cs   settings window (language/theme hot-switch / toggles / check & auto-update / about)
-UpdateCheck.cs    GitHub Releases check + auto-update download with sha256 verification (background silent, TLS 1.2)
-UiFeedback.cs     operation-failure / info balloon channel (leaf, event-driven)
-Win32.cs          P/Invoke declarations and dark-theme helpers
-Logging.cs        log writing / rotation (5 MB)
-Lang.cs           UI language table (zh / en)
+src/Program.cs        entry: Main + headless modes (--smoke / --menu-test / --find-window / --resolve-url / --ui-preview / --liveness-test / --elevated-kill / --restart-helper)
+src/Config.cs         single config source dshtray.ini: parsing, auto-detection, registry mirror
+src/IniFile.cs        minimal ini reader/writer (comments preserved, keys updated in place)
+src/DshProcess.cs     harness process state machine: start/stop/restart/self-heal poll/liveness/elevated kill
+src/WindowMgr.cs      browser app window: open (16:9 fit), enumerate, focus
+src/TrayMenu.cs       tray icon, native menu, theme, poll
+src/SettingsForm.cs   settings window (language/theme hot-switch / toggles / check & auto-update / about)
+src/UpdateCheck.cs    GitHub Releases check + auto-update download with sha256 verification (background silent, TLS 1.2)
+src/UiFeedback.cs     operation-failure / info balloon channel (leaf, event-driven)
+src/Win32.cs          P/Invoke declarations and dark-theme helpers
+src/Logging.cs        log writing / rotation (5 MB)
+src/Lang.cs           UI language table (zh / en)
 app.manifest      DPI awareness + asInvoker manifest
 assets/           whale-white.ico (exe icon), whale-blue.png / whale-dark.png (status icons, embedded)
 .github/workflows/ release automation
@@ -55,7 +55,7 @@ cmd /c .devtools\build-dev.bat
 
 ## Release process
 
-1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `Program.cs` (currently `1.3.0.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
+1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `src/Program.cs` (currently `1.5.0.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
 2. `git tag vX.Y.Z` and `git push --tags`
 3. GitHub Actions compiles, generates the SHA256, and creates a Release with the exe and checksum attached
 
@@ -63,10 +63,10 @@ cmd /c .devtools\build-dev.bat
 
 - **How the harness is launched**: via `cmd /c node <dsh entry> web >> harness.log 2>&1`, with output redirected to a **file** instead of a pipe. Reason: if the tray exits and the pipe breaks, node crashes from EPIPE within ~1 second (verified empirically); file redirection makes the harness fully independent of the tray's lifetime
 - **Async lifecycle**: start / stop / restart run on `Task`s and never block the UI thread (menu, left-click and the poll stay responsive); the icon is two-state — blue=running, white/dark=stopped (no flashing) — and updates only when the state changes; the self-heal poll won't double-start while an async start/restart is in flight
-- **Liveness check**: TCP probe to `127.0.0.1:Port` (default 3080), and the port owner must be a node process for the harness to count as up (avoids mistaking other processes); PIDs are resolved by parsing `netstat -ano` (LISTENING rows with loopback/any local addresses only)
+- **Liveness check**: TCP probe to `127.0.0.1:Port` (default 3080), and the port owner must be a node process for the harness to count as up (avoids mistaking other processes); PIDs are resolved by parsing `netstat -ano` (LISTENING rows with loopback/any local addresses only). While Running, the poll additionally re-verifies the port every 3s: an adopted host the tray cannot track (e.g. an elevated harness) has no Exited watcher, so 3 consecutive dead probes (≈9s) demote the state to Stopped for the auto-restart to take over; a false demotion is harmless (StartCore re-adopts). Verified deterministically by `--liveness-test`
 - **Stop / restart**: stop still uses `taskkill /T /F` on the process tree; if the target runs at a higher integrity level (e.g. an admin-started harness), the tray re-launches itself elevated (`--elevated-kill <pid>`) to kill it (silent when UAC is "never notify"). **Restart prefers a soft restart**: the target PID is the real NODE process on the port (not the cmd wrapper, otherwise the soft path would always degrade to hard restart) → rebuild the exact boot invocation from that process's WMI command line → write `restart-<nonce>.spec` → spawn a detached `dsh-tray.exe --restart-helper <spec>` → **hard-stop the OLD process tree first** (on Windows, node's `process.kill(SIGTERM)` is only TerminateProcess and never reaches a JS handler / graceful dispose, so graceful shutdown cannot be relied on); the helper polls the port for release ≤30s → once free, replays the launch through `cmd /c` hidden (keeping the original log semantics; PowerShell `-WindowStyle Hidden` is only the fallback when an arg contains a double quote or %); the helper writes OK only when the port is bound by a NEW pid (≠ old pid) and kills the wrapper tree it spawned on failure; the tray poll equally requires port pid ≠ old pid before declaring success and re-binds `dshProc` so crash auto-restart/stop still work; a failed/timed-out/unpreparable soft restart automatically falls back to the hard restart. `--restart-helper` accepts only `%LOCALAPPDATA%\dsh-tray` `restart-*.spec` files and is dispatched before the single-instance mutex, like `--elevated-kill`
 - **Native menu**: `CreatePopupMenu` + `AppendMenuW` + `TrackPopupMenuEx`. Dark mode follows the system via `uxtheme.dll` `SetPreferredAppMode(#135)` + `FlushMenuThemes(#136)`; the owner window must be brought to the foreground before showing the menu (`SetForegroundWindow` + ALT-key trick), otherwise the menu won't dismiss on outside clicks / Esc
-- **Auto-refresh**: enumerates top-level windows of the configured browser (process names from the config plus chrome/msedge fallbacks) and sends Ctrl+R to windows whose title contains "DeepSeek Harness" (foreground first; skipped if focus can't be taken)
+- **Window open & focus**: "Open Window" launches an app-mode window via `chrome --app=<url>` with `--window-size/--window-position` geometry — 16:9 fitting 90% of the primary work area from `SPI_GETWORKAREA`, centered (the manifest is DPI-aware; values are physical pixels; a failed probe falls back to Chrome's default). `openmode=browser` in the ini skips app mode and opens a plain tab in the default browser. **Pages are never force-reloaded**: the dsh frontend has shipped auto-reconnect since 0.0.1-rc.5 (connection state machine), so after a restart the page recovers on its own — a forced reload only causes the theme flash; users press Ctrl+R once after a plugin frontend update. **Single-click focus**: `FocusHarnessWindow` enumerates browser top-level windows and brings the first titled "DeepSeek Harness" to the foreground (matches app windows and active tabs; background tabs are undetectable) — a new window opens only when none exists
 - **Configuration**: `dshtray.ini` is the **single config source** (see README "Configuration") — auto-restart and autostart live in this file too; the autostart ini value is mirrored to the registry Run key at startup; a legacy registry value (`Software\dsh-tray\AutoRestart`) is migrated once at startup. node / dsh / chrome paths are auto-detected when left empty (PATH, common install locations, npm global directory). The `theme` key (light/dark/empty = follow system) is a manual theme override that takes precedence over the registry
 - **Update check / auto-update**: one silent background request to the GitHub Releases API at startup (failures are logged only); when a new version is found it surfaces in the menu and the settings window. The settings window's "Auto-update" runs `UpdateCheck.DownloadAndVerify` (downloads the exe + sha256 verification); when the running exe is locked it keeps the verified `.new` and prompts for a manual replace
 - **Operation feedback**: `UiFeedback` is an event channel (`Fail` for failures / `Info` for informational); TrayMenu subscribes and shows a 4-second balloon (Error / Info icon). It is used only for "a user-initiated action failed" and "update ready" — passive paths like start/elevation failures never pop up

@@ -7,8 +7,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-// Chrome/Edge window helpers: open the app window, enumerate/reload it. Leaf-ish layer:
-// depends only on Config / Win32 / Logging (never on Program, TrayMenu, or DshProcess).
+// Chrome/Edge window helpers: open the app window, enumerate/focus existing ones. Leaf-ish
+// layer: depends only on Config / Win32 / Logging (never on Program, TrayMenu, or DshProcess).
 static class WindowMgr
 {
     public static void OpenWindow()
@@ -22,26 +22,45 @@ static class WindowMgr
             string url = ResolveWebUrl(out authPending);
             try
             {
-                if (Config.Current.ChromePath != null && File.Exists(Config.Current.ChromePath))
+                // openmode=browser skips app mode entirely (plain tab in the default browser)
+                if (Config.Current.OpenMode != "browser" &&
+                    Config.Current.ChromePath != null && File.Exists(Config.Current.ChromePath))
                 {
                     Process.Start(new ProcessStartInfo
                     {
                         FileName = Config.Current.ChromePath,
-                        Arguments = "--app=" + url,
+                        // Chrome's default app-window size is awkward: fit 16:9 to the work area
+                        Arguments = "--app=" + url + " " + WindowGeometryArgs(),
                         UseShellExecute = false
                     });
                 }
                 else
                 {
-                    // no Chrome/Edge found: open in the default browser
+                    // openmode=browser or no Chromium found: open in the default browser
                     Process.Start(url);
-                    Logging.Log("OpenWindow: no chrome/edge found, opened in default browser");
+                    Logging.Log("OpenWindow: opened in default browser");
                 }
                 Logging.Log("OpenWindow: url=" + url);
                 if (authPending) UiFeedback.Info(Lang.T("feedback.webAuthPending"));
             }
             catch (Exception ex) { Logging.Log("OpenWindow failed: " + ex.Message); UiFeedback.Fail(Lang.T("feedback.openWindowFailed")); }
         }));
+    }
+
+    // --window-size/--window-position for the app window: 90% of the primary work area height at
+    // 16:9 (width-capped), centered. Physical pixels — the app manifest is DPI-aware. Returns an
+    // empty string when the work-area probe fails, letting Chrome use its own default.
+    static string WindowGeometryArgs()
+    {
+        var wa = new Win32.RECT();
+        if (!Win32.SystemParametersInfo(Win32.SPI_GETWORKAREA, 0, ref wa, 0)) return "";
+        int ww = wa.Right - wa.Left, wh = wa.Bottom - wa.Top;
+        if (ww <= 0 || wh <= 0) return "";
+        int h = wh * 9 / 10, w = h * 16 / 9;
+        int maxW = ww * 19 / 20;
+        if (w > maxW) { w = maxW; h = w * 9 / 16; }
+        return "--window-size=" + w + "," + h +
+               " --window-position=" + (wa.Left + (ww - w) / 2) + "," + (wa.Top + (wh - h) / 2);
     }
 
     // ---- web URL resolution ----------------------------------------------------------
@@ -148,8 +167,8 @@ static class WindowMgr
     }
 
     // enumerate top-level windows owned by a configured browser (Chrome/Edge/etc.), returning
-    // hwnd+title pairs. Shared by ReloadAppWindow (title match) and FindWindows (report), so the
-    // EnumWindows+visibility+pid+browser-filter boilerplate lives in exactly one place.
+    // hwnd+title pairs. Shared by FocusHarnessWindow and FindWindows, so the EnumWindows+
+    // visibility+pid+browser-filter boilerplate lives in exactly one place.
     static List<KeyValuePair<IntPtr, string>> EnumerateAppWindows()
     {
         var windows = new List<KeyValuePair<IntPtr, string>>();
@@ -178,57 +197,24 @@ static class WindowMgr
         return windows;
     }
 
-    // A browser tab appends " - Google Chrome" / " - Microsoft Edge" to its title; the dedicated
-    // app-mode harness window does not. Matching on the marker alone is too loose and would also
-    // reload unrelated tabs whose title happens to mention "deepseek harness".
-    static bool LooksLikeHarnessWindow(string title)
+    // Focus an existing harness window instead of stacking a duplicate: matches app-mode windows
+    // AND plain browser tabs showing the UI (both carry "DeepSeek Harness" in the title; a tab is
+    // only detectable while it is the active tab). Uses the ALT-foreground dance Windows requires
+    // before focus stealing. Returns false when no harness window exists.
+    public static bool FocusHarnessWindow()
     {
-        if (title == null ||
-            title.IndexOf("DeepSeek Harness", StringComparison.OrdinalIgnoreCase) < 0)
-            return false;
-        return !title.EndsWith(" - Google Chrome", StringComparison.OrdinalIgnoreCase) &&
-               !title.EndsWith(" - Microsoft Edge", StringComparison.OrdinalIgnoreCase) &&
-               !title.EndsWith(" - Chromium", StringComparison.OrdinalIgnoreCase);
-    }
-
-    // find Chrome top-level windows whose title matches the DSH webui and send Ctrl+R
-    public static void ReloadAppWindow()
-    {
-        try
+        foreach (var w in EnumerateAppWindows())
         {
-            var targets = new List<IntPtr>();
-            foreach (var w in EnumerateAppWindows())
-            {
-                if (LooksLikeHarnessWindow(w.Value))
-                    targets.Add(w.Key);
-            }
-
-            if (targets.Count == 0) { Logging.Log("ReloadAppWindow: no matching window"); return; }
-
-            // dummy ALT press unlocks Windows foreground-switch restrictions
+            if (w.Value == null ||
+                w.Value.IndexOf("DeepSeek Harness", StringComparison.OrdinalIgnoreCase) < 0)
+                continue;
             Win32.keybd_event(Win32.VK_MENU, 0, 0, UIntPtr.Zero);
             Win32.keybd_event(Win32.VK_MENU, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
-
-            int sent = 0;
-            foreach (IntPtr h in targets)
-            {
-                Win32.SetForegroundWindow(h);
-                Thread.Sleep(80);
-                if (Win32.GetForegroundWindow() != h)
-                {
-                    Logging.Log("ReloadAppWindow: cannot focus window, skip");
-                    continue;
-                }
-                Win32.keybd_event(Win32.VK_CONTROL, 0, 0, UIntPtr.Zero);
-                Win32.keybd_event(Win32.VK_R, 0, 0, UIntPtr.Zero);
-                Win32.keybd_event(Win32.VK_R, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
-                Win32.keybd_event(Win32.VK_CONTROL, 0, Win32.KEYEVENTF_KEYUP, UIntPtr.Zero);
-                sent++;
-                Thread.Sleep(150);
-            }
-            Logging.Log("ReloadAppWindow: reloaded " + sent + "/" + targets.Count + " window(s)");
+            Win32.SetForegroundWindow(w.Key);
+            Thread.Sleep(80);
+            return Win32.GetForegroundWindow() == w.Key;
         }
-        catch (Exception ex) { Logging.Log("ReloadAppWindow failed: " + ex.Message); }
+        return false;
     }
 
     // headless: list Chrome top-level windows (read-only), returned as newline-joined text.

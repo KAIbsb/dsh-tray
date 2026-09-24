@@ -18,6 +18,9 @@ class AppConfig
     public string WebUrl = "http://127.0.0.1:3080";
     public int Port = 3080;
     public string IniLang;
+    // how OpenWindow presents the UI: "app" (Chromium app window, default) or "browser"
+    // (plain tab in the default browser); set by the ini `openmode` key
+    public string OpenMode = "app";
     public List<string> BrowserNames = new List<string>();
 }
 
@@ -166,6 +169,11 @@ static class Config
             }
 
             Current.IniLang = IniFile.Get(lines, "lang");
+
+            // openmode: app (Chromium app window, default) or browser (tab in the default browser);
+            // any value other than "browser" means app
+            string openMode = (IniFile.Get(lines, "openmode") ?? "").Trim().ToLowerInvariant();
+            Current.OpenMode = openMode == "browser" ? "browser" : "app";
 
             Current.NodePath = IniFile.Get(lines, "node");
             Current.DshEntry = IniFile.Get(lines, "dshentry");

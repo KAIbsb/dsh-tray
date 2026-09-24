@@ -5,13 +5,13 @@
 .devtools/
 
 # 测试产物
-smoke-result.txt
+*-result.txt
 menu-test.txt
+liveness-test.txt
 menu-test.png
-find-window-result.txt
-resolve-url-result.txt
 *-preview-*.png
+*.sha256
+*.old
 
 # 用户本地配置(绝不入库)
 dshtray.ini
-liveness-test.txt
