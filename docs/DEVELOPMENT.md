@@ -18,12 +18,13 @@ src/DshProcess.cs     harness 进程状态机:启动/停止/重启/自愈轮询/
 src/WindowMgr.cs      浏览器 APP 窗口:打开(16:9 自适应)、枚举、聚焦
 src/TrayMenu.cs       托盘图标、原生菜单、主题、轮询
 src/SettingsForm.cs   设置窗口(语言/主题热切换/开关/检查更新与自动更新/关于)
+build/            build.bat、dsh-tray.rsp、app.manifest、dshtray.ini.example(构建输入)
 src/UpdateCheck.cs    GitHub Releases 版本检查 + 自动更新下载与 sha256 校验(后台静默,TLS 1.2)
 src/UiFeedback.cs     操作失败 / 信息气泡反馈通道(叶子,事件触发)
 src/Win32.cs          P/Invoke 声明与暗色主题封装
 src/Logging.cs        日志写入/轮转(5MB)
 src/Lang.cs           界面语言表(zh / en)
-app.manifest      DPI 感知 + asInvoker 权限清单
+build/app.manifest   DPI 感知 + asInvoker 权限清单
 assets/           whale-white.ico(exe 图标)、whale-blue.png / whale-dark.png(状态图标,内嵌资源)
 .github/workflows/ Release 自动化
 docs/             README 英文版、本文档
@@ -36,16 +37,16 @@ docs/             README 英文版、本文档
 本地一键构建(仓库根目录运行):
 
 ```bat
-build.bat
+build\build.bat
 ```
 
 等价于直接调用编译器响应文件:
 
 ```bat
-csc @dsh-tray.rsp
+csc @build\dsh-tray.rsp
 ```
 
-编译参数与源文件清单统一收敛在仓库根的 `dsh-tray.rsp`(当前 13 个源文件 + 图标/配置模板内嵌资源),`build.bat` 与 CI(`.github/workflows/release.yml`)均以它作为单一来源,避免多处命令漂移。`csc.exe` 位于 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`(`build.bat` 自动定位)。产物为单文件 exe(图标、状态图标与配置模板均内嵌),无需安装任何运行时。
+编译参数与源文件清单统一收敛在 `build/dsh-tray.rsp`(当前 13 个源文件 + 图标/配置模板内嵌资源),`build.bat` 与 CI(`.github/workflows/release.yml`)均以它作为单一来源,避免多处命令漂移。`csc.exe` 位于 `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\`(`build/build.bat` 自动定位)。产物为单文件 exe(图标、状态图标与配置模板均内嵌),无需安装任何运行时。
 
 开发期若托盘正在运行(exe 被占用),可用本地脚本编译到临时名并自动跑 smoke:
 

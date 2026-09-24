@@ -4,10 +4,10 @@
 /platform:anycpu
 /optimize+
 /win32icon:assets\whale-white.ico
-/win32manifest:app.manifest
+/win32manifest:build\app.manifest
 /resource:assets\whale-blue.png,whale-blue.png
 /resource:assets\whale-dark.png,whale-dark.png
-/resource:dshtray.ini.example,dshtray.ini.example
+/resource:build\dshtray.ini.example,dshtray.ini.example
 /r:System.Drawing.dll
 /r:System.Management.dll
 /r:System.Windows.Forms.dll

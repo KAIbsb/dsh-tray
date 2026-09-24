@@ -18,12 +18,13 @@ src/DshProcess.cs     harness process state machine: start/stop/restart/self-hea
 src/WindowMgr.cs      browser app window: open (16:9 fit), enumerate, focus
 src/TrayMenu.cs       tray icon, native menu, theme, poll
 src/SettingsForm.cs   settings window (language/theme hot-switch / toggles / check & auto-update / about)
+build/            build.bat, dsh-tray.rsp, app.manifest, dshtray.ini.example (build inputs)
 src/UpdateCheck.cs    GitHub Releases check + auto-update download with sha256 verification (background silent, TLS 1.2)
 src/UiFeedback.cs     operation-failure / info balloon channel (leaf, event-driven)
 src/Win32.cs          P/Invoke declarations and dark-theme helpers
 src/Logging.cs        log writing / rotation (5 MB)
 src/Lang.cs           UI language table (zh / en)
-app.manifest      DPI awareness + asInvoker manifest
+build/app.manifest   DPI awareness + asInvoker manifest awareness + asInvoker manifest
 assets/           whale-white.ico (exe icon), whale-blue.png / whale-dark.png (status icons, embedded)
 .github/workflows/ release automation
 docs/             English README, this document
@@ -36,16 +37,16 @@ Dependencies flow one way: `Program → TrayMenu → {DshProcess, WindowMgr} →
 One-shot local build (run from the repo root):
 
 ```bat
-build.bat
+build\build.bat
 ```
 
 Equivalent to invoking the compiler response file directly:
 
 ```bat
-csc @dsh-tray.rsp
+csc @build\dsh-tray.rsp
 ```
 
-Compiler flags and the source-file list are consolidated into `dsh-tray.rsp` at the repo root (currently 13 source files plus embedded icon/config-template resources), which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the command copies can't drift apart. `csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build.bat` locates it automatically). The output is a single exe (icon, status icons and the config template all embedded) with no runtime to install.
+Compiler flags and the source-file list are consolidated into `build/dsh-tray.rsp` (currently 13 source files plus embedded icon/config-template resources), which `build.bat` and CI (`.github/workflows/release.yml`) both use as the single source of truth, so the command copies can't drift apart. `csc.exe` lives at `C:\Windows\Microsoft.NET\Framework64\v4.0.30319\` (`build/build.bat` locates it automatically). The output is a single exe (icon, status icons and the config template all embedded) with no runtime to install.
 
 During development, when the tray is running and the exe is locked, use the local helper that builds to a temporary name and runs smoke:
 

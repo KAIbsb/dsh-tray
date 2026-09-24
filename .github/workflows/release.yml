@@ -18,7 +18,7 @@ jobs:
         shell: pwsh
         run: |
           $fx = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319"
-          & "$fx\csc.exe" "@dsh-tray.rsp"
+          & "$fx\csc.exe" "@build\dsh-tray.rsp"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Get-Item dsh-tray.exe | Select-Object Name, Length
 
