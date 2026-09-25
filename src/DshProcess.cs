@@ -47,7 +47,8 @@ class DshProcess
     const int SoftRestartDeadlineMs = 90000;      // max time to wait for the soft-restart handoff
     const int SoftRestartPortFreeMs = 30000;      // helper: max time to wait for the old port to release
     const int SoftRestartPortUpMs = 20000;        // helper: max time to wait for the replacement to bind
-    const int LivenessFailThreshold = 3;          // consecutive dead-port probes before Running degrades to Stopped
+    const int LivenessFailThreshold = 3;
+    const int WmiQueryTimeoutMs = 3000;            // WMI cmdline queries: wedge guard (mass-kill storms)          // consecutive dead-port probes before Running degrades to Stopped
 
     readonly AppConfig cfg;
     readonly object stateLock = new object();
@@ -332,44 +333,55 @@ class DshProcess
 
     // named handler so it can be unsubscribed before Dispose; uses sender.Id (not dshProc)
     // because dshProc may already reference a newer process by the time this fires
+    // Exited-event callback. Process.WaitForExit/Dispose JOIN this handler while they wait, and
+    // StopCore waits on exactly that: the probe below (netstat + WMI) can wedge for minutes right
+    // after a mass taskkill, which would wedge the whole stop path. So this callback only logs
+    // and parks the real logic on a pool thread, returning before any blocking call.
     void dshProcExited(object sender, EventArgs e)
+    {
+        var p = sender as Process;
+        Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1));
+#pragma warning disable 4014 // fire-and-forget is the point of this split (see comment above)
+        Task.Run(() => HandleDshProcessExited(p));
+#pragma warning restore 4014
+    }
+
+    // The real exited-settling logic, off the event callback (see dshProcExited).
+    void HandleDshProcessExited(Process p)
     {
         try
         {
-            var p = sender as Process;
             bool current;
             lock (stateLock) { current = p != null && ReferenceEquals(p, dshProc); }
-            if (current)
+            if (!current) { Logging.Log("dsh process exited (stale)"); return; }
+            // During a soft restart the helper owns the port handoff: the old process exiting
+            // is EXPECTED and must not collapse the state to Stopped (which would let the
+            // auto-restart poll race the helper into spawning a second host).
+            lock (stateLock)
             {
-                // During a soft restart the helper owns the port handoff: the old process exiting
-                // is EXPECTED and must not collapse the state to Stopped (which would let the
-                // auto-restart poll race the helper into spawning a second host).
-                bool soft;
-                lock (stateLock) { soft = softRestartActive; }
-                if (soft)
+                if (softRestartActive)
                 {
                     Logging.Log("dsh process exited during soft restart; replacement helper will bring it up");
                     return;
                 }
-                // probe outside the lock (TCP + maybe netstat): only collapse to Stopped when
-                // the port is really down — our process may have died on a port conflict while
-                // another node instance still serves the harness
-                bool served = PortServedByDsh();
-                lock (stateLock)
+            }
+            // probe outside the lock (TCP + maybe netstat): only collapse to Stopped when
+            // the port is really down — our process may have died on a port conflict while
+            // another node instance still serves the harness
+            bool served = PortServedByDsh();
+            lock (stateLock)
+            {
+                if (p != null && ReferenceEquals(p, dshProc) &&
+                    (state == DshState.Running || state == DshState.Starting))
                 {
-                    if (p != null && ReferenceEquals(p, dshProc) &&
-                        (state == DshState.Running || state == DshState.Starting))
-                    {
-                        if (served)
-                            Logging.Log("dsh process exited but port still served by another node; staying up");
-                        else
-                            state = DshState.Stopped;
-                    }
+                    if (served)
+                        Logging.Log("dsh process exited but port still served by another node; staying up");
+                    else
+                        state = DshState.Stopped;
                 }
             }
-            Logging.Log("dsh process exited pid=" + (p != null ? p.Id : -1) + (current ? "" : " (stale)"));
         }
-        catch (Exception ex) { Logging.Log("dshProcExited failed: " + ex.Message); }
+        catch (Exception ex) { Logging.Log("HandleDshProcessExited failed: " + ex.Message); }
     }
 
     // core stop (no state transition): kill owned process + any node on the port, then wait for
@@ -1239,7 +1251,12 @@ class DshProcess
     static bool TryReadCommandLine(int pid, out List<string> tokens)
     {
         tokens = null;
-        try
+        // WMI can wedge for minutes right after a mass process termination (taskkill /T of a
+        // full harness tree kills MCP children etc.), and stop/adopt/restart all read command
+        // lines: bound the query and treat a timeout as unreadable. The abandoned query keeps
+        // running on a pool thread and is discarded.
+        List<string> found = null;
+        var query = Task.Run(delegate
         {
             using (var searcher = new ManagementObjectSearcher(
                 "SELECT CommandLine FROM Win32_Process WHERE ProcessId=" + pid))
@@ -1248,13 +1265,23 @@ class DshProcess
                 {
                     object cl = obj["CommandLine"];
                     if (cl == null) continue;
-                    tokens = SplitCommandLine(cl.ToString());
-                    return tokens != null && tokens.Count > 0;
+                    found = SplitCommandLine(cl.ToString());
+                    return found != null && found.Count > 0;
                 }
             }
+            return false;
+        });
+        bool done;
+        try { done = query.Wait(WmiQueryTimeoutMs); }
+        catch (AggregateException ex)
+        {
+            Logging.Log("TryReadCommandLine WMI query failed: " + ex.GetBaseException().Message);
+            return false;
         }
-        catch (Exception ex) { Logging.Log("TryReadCommandLine failed: " + ex.Message); }
-        return false;
+        if (!done)
+            Logging.Log("TryReadCommandLine: WMI query exceeded " + WmiQueryTimeoutMs + "ms (pid=" + pid + "), treating as unreadable");
+        tokens = found;
+        return done && found != null && found.Count > 0;
     }
 
     static List<string> SplitCommandLine(string cmdLine)

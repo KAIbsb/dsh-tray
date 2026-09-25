@@ -62,7 +62,7 @@ cmd /c .devtools\build-dev.bat
 
 ## dsh 版本兼容边界
 
-托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,2026-09-24 已对 0.1.7-alpha.1/alpha.2/rc.1 解包审计 + 0.1.7-alpha.2 实测,三轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`、`fixes/compat-check-20260924/`):
+托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,2026-09-24 已对 0.1.7-alpha.1/alpha.2/rc.1/rc.2 解包审计 + 0.1.7-alpha.2/rc.2 实测,三轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`、`fixes/compat-check-20260924/`):
 
 1. **入口文件**:全局包 `lib/bin.js`(0.1.5 改为 hash 分块 bundle,入口名未变;自动探测按此路径)
 2. **`web` 子命令**:rc.2 及之前为 launcher 的 commander 子命令,0.1.6-alpha.1 起改为首位参数展开(`dsh web` ≡ `dsh --profile web`,托盘启动行不变);`--no-open` 由 web-startup 解析,旗标门控见 `VersionSupportsNoOpen`(0.1.0-rc.8 引入)
