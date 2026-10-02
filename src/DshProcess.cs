@@ -47,8 +47,8 @@ class DshProcess
     const int SoftRestartDeadlineMs = 90000;      // max time to wait for the soft-restart handoff
     const int SoftRestartPortFreeMs = 30000;      // helper: max time to wait for the old port to release
     const int SoftRestartPortUpMs = 20000;        // helper: max time to wait for the replacement to bind
-    const int LivenessFailThreshold = 3;
-    const int WmiQueryTimeoutMs = 3000;            // WMI cmdline queries: wedge guard (mass-kill storms)          // consecutive dead-port probes before Running degrades to Stopped
+    const int LivenessFailThreshold = 3;           // consecutive dead-port probes before Running degrades to Stopped
+    const int WmiQueryTimeoutMs = 3000;            // WMI cmdline queries: wedge guard (mass-kill storms)
 
     readonly AppConfig cfg;
     readonly object stateLock = new object();
@@ -615,13 +615,17 @@ class DshProcess
         if (!prepared)
             return false;
 
+        Process helper;
         int helperPid;
         string specPath;
-        if (!StartRestartHelper(spec, out helperPid, out specPath))
+        if (!StartRestartHelper(spec, out helper, out helperPid, out specPath))
             return false;
 
         lock (stateLock)
         {
+            // single registration: the helper handle and the soft-restart state must switch on
+            // together, or a concurrent Dispose could observe one without the other
+            restartHelper = helper;
             softRestartActive = true;
             softRestartDeadlineTick = Environment.TickCount + SoftRestartDeadlineMs;
             softRestartSpecPath = specPath;
@@ -789,8 +793,9 @@ class DshProcess
         return null;
     }
 
-    bool StartRestartHelper(RestartSpec spec, out int helperPid, out string specPath)
+    bool StartRestartHelper(RestartSpec spec, out Process helper, out int helperPid, out string specPath)
     {
+        helper = null;
         helperPid = 0;
         specPath = null;
         try
@@ -811,7 +816,7 @@ class DshProcess
                 CleanupRestartFiles(specPath);
                 return false;
             }
-            lock (stateLock) { restartHelper = p; }
+            helper = p;
             helperPid = p.Id;
             return true;
         }

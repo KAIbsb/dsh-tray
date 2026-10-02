@@ -24,7 +24,7 @@ src/UiFeedback.cs     operation-failure / info balloon channel (leaf, event-driv
 src/Win32.cs          P/Invoke declarations and dark-theme helpers
 src/Logging.cs        log writing / rotation (5 MB)
 src/Lang.cs           UI language table (zh / en)
-build/app.manifest   DPI awareness + asInvoker manifest awareness + asInvoker manifest
+build/app.manifest   DPI awareness + asInvoker + Win10/11 supportedOS manifest
 assets/           whale-white.ico (exe icon), whale-blue.png / whale-dark.png (status icons, embedded)
 .github/workflows/ release automation
 docs/             English README, this document
@@ -56,9 +56,23 @@ cmd /c .devtools\build-dev.bat
 
 ## Release process
 
-1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `src/Program.cs` (currently `1.5.0.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
+1. Bump the version: the `AssemblyVersion` / `AssemblyFileVersion` attributes at the top of `src/Program.cs` (currently `1.6.0.0`), keeping them in sync with the git tag; `AppVersion` is read from the assembly at runtime, so nothing else needs updating
 2. `git tag vX.Y.Z` and `git push --tags`
 3. GitHub Actions compiles, generates the SHA256, and creates a Release with the exe and checksum attached
+
+## dsh version compatibility boundary
+
+Everything the tray depends on in dsh converges to seven touchpoints; after upgrading dsh, checking them one by one decides compatibility (2026-09-12: the full 0.1.5 line alpha.1/alpha.2/rc.1/rc.2 audited + live-verified; 2026-09-18: 0.1.6-alpha.1/alpha.2 unpack-audited; 2026-09-24: 0.1.7-alpha.1/alpha.2/rc.1/rc.2 unpack-audited + 0.1.7-alpha.2/rc.2 live-verified; 2026-10-02: backfill audit of 0.1.0-rc.8 / 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.3-alpha.2 — the last prerelease of each minor (0.1.4 was never published) — completing coverage of the whole 0.1.x line. Every round concluded zero-change compatibility; evidence lives in the workspace dirs `fixes/compat-check-20260912/`, `fixes/compat-check-20260918/`, `fixes/compat-check-20260924/`, `fixes/compat-check-20261002/`):
+
+1. **Entry file**: the global package's `lib/bin.js` (0.1.5 turned it into a hash-chunked bundle, entry name unchanged; auto-detection follows this path)
+2. **`web` subcommand**: up to rc.2 a commander subcommand of the launcher; from 0.1.6-alpha.1 a first-argument expansion (`dsh web` ≡ `dsh --profile web`, the tray's launch line unchanged); `--no-open` is parsed by web-startup, gated by `VersionSupportsNoOpen` (introduced in 0.1.0-rc.8)
+3. **Startup banner**: `dsh web: <URL>` (possibly with a ` (LAN: …)` suffix; a non-URL line appears additionally when auto-opening the browser) — the parser only accepts lines starting with http and takes the last one in the file
+4. **Token authentication**: the 303 (token→cookie) / 401 (unauthenticated) semantics of dsh ≥ 0.1.2, the `?token=` query parameter — `ResolveWebUrl`'s three-way probe depends on them
+5. **Default port 3080**: used only for liveness/port-ownership checks; the actually opened address follows the banner URL
+6. **Process identity**: node + command-line markers (`@deepseek-ai` / `bin.js` / `\dsh\` / `/dsh/`, the last covering forward-slash paths produced by npm shims or manual terminal launches)
+7. **Frontend window title**: `DeepSeek Harness` (the match target for single-click focus of an existing window; works for both app windows and web tabs)
+
+dsh 0.0.1-rc.1/rc.2 depend on the unpublished `dsh-frontend` package and cannot be installed from npm — declared unsupported; 0.0.1-rc.5 through 0.1.0-rc.7 were historically compatible but are no longer covered as of v1.6.0; **0.2.x is not supported** — the 2026-10-02 unpack reconnaissance of 0.2.0-rc.2 found the seven touchpoints substantively identical to 0.1.7-rc.2 (web-startup byte-identical), i.e. zero-change compatible at the unpack level, but the 0.2 line reserves a `desktop` profile for the official Electron desktop distribution; with this project archived, 0.2+ users are redirected to the official desktop app (see the README archive banner) and no adaptation is made.
 
 ## Internals (read before modifying)
 
@@ -82,6 +96,7 @@ cmd /c .devtools\build-dev.bat
 | `--menu-test` | Builds the native menu for validation (not shown); writes `menu-test.txt` |
 | `--find-window` | Lists all browser top-level windows (read-only); writes `find-window-result.txt` |
 | `--resolve-url` | Reproduces the URL resolution of "Open Window": reads the last `dsh web:` banner from the harness log + HTTP probe; writes `resolve-url-result.txt` (with an `authPending` field) |
+| `--liveness-test` | Self-check of the liveness blind spot: drives the Running-state re-verification state machine against real loopback ports (live port never degrades / 3 consecutive dead probes degrade / the counter resets across non-Running states); writes `liveness-test.txt` |
 | `--ui-preview` | Renders light/dark screenshots of the settings window (dev use), writes `settings-preview-*.png`; a temporary `dshtray.ini` `lang` key controls the language |
 | `--elevated-kill <pid>` | Kills a process tree as administrator (invoked automatically on demand) |
 
@@ -93,6 +108,7 @@ The whale icon comes from `favicon.svg` inside the DeepSeek Harness frontend pac
 
 ## Conventions
 
+- Platform: Windows 10/11 only (`app.manifest` supportedOS declares only the Win10 GUID, which Win11 shares); runs on the system-built-in .NET Framework 4.8, compiled with the in-box csc (C# 5), zero external dependencies
 - Single instance: mutex `dsh-tray_SingleInstance` (automatically takes over after a crashed instance)
 - Auto-restart: the `autorestart` ini key (older versions stored it in the registry under `Software\dsh-tray\AutoRestart`; migrated once at startup)
 - Autostart: the `autostart` ini key is the single source, mirrored to `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` (value name `dsh-tray`)

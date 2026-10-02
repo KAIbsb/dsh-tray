@@ -24,7 +24,7 @@ src/UiFeedback.cs     操作失败 / 信息气泡反馈通道(叶子,事件触�
 src/Win32.cs          P/Invoke 声明与暗色主题封装
 src/Logging.cs        日志写入/轮转(5MB)
 src/Lang.cs           界面语言表(zh / en)
-build/app.manifest   DPI 感知 + asInvoker 权限清单
+build/app.manifest   DPI 感知 + asInvoker 权限 + Win10/11 supportedOS 清单
 assets/           whale-white.ico(exe 图标)、whale-blue.png / whale-dark.png(状态图标,内嵌资源)
 .github/workflows/ Release 自动化
 docs/             README 英文版、本文档
@@ -56,13 +56,13 @@ cmd /c .devtools\build-dev.bat
 
 ## 发布流程
 
-1. 更新版本号:`src/Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.5.0.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
+1. 更新版本号:`src/Program.cs` 顶部的 `AssemblyVersion` / `AssemblyFileVersion` 特性(当前 `1.6.0.0`),与 git tag 保持一致;`AppVersion` 运行时自动从程序集读取,无需单独维护
 2. `git tag vX.Y.Z` 并 `git push --tags`
 3. GitHub Actions 自动编译 → 生成 SHA256 → 创建 Release 并附上 exe 与校验和
 
 ## dsh 版本兼容边界
 
-托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,2026-09-24 已对 0.1.7-alpha.1/alpha.2/rc.1/rc.2 解包审计 + 0.1.7-alpha.2/rc.2 实测,三轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`、`fixes/compat-check-20260924/`):
+托盘对 dsh 的全部依赖收敛为七个触点,升级 dsh 后逐项核对即可判断兼容性(2026-09-12 已对 0.1.5 全线 alpha.1/alpha.2/rc.1/rc.2 审计 + 实测,2026-09-18 已对 0.1.6-alpha.1/alpha.2 解包审计,2026-09-24 已对 0.1.7-alpha.1/alpha.2/rc.1/rc.2 解包审计 + 0.1.7-alpha.2/rc.2 实测,2026-10-02 回填审计 0.1.0-rc.8 / 0.1.1-rc.2 / 0.1.2-rc.1 / 0.1.3-alpha.2——各小版本末位预发布,0.1.4 未发布——自此 0.1.x 全线覆盖,历轮结论均为零改动兼容;证据存工作区 `fixes/compat-check-20260912/`、`fixes/compat-check-20260918/`、`fixes/compat-check-20260924/`、`fixes/compat-check-20261002/`):
 
 1. **入口文件**:全局包 `lib/bin.js`(0.1.5 改为 hash 分块 bundle,入口名未变;自动探测按此路径)
 2. **`web` 子命令**:rc.2 及之前为 launcher 的 commander 子命令,0.1.6-alpha.1 起改为首位参数展开(`dsh web` ≡ `dsh --profile web`,托盘启动行不变);`--no-open` 由 web-startup 解析,旗标门控见 `VersionSupportsNoOpen`(0.1.0-rc.8 引入)
@@ -72,7 +72,7 @@ cmd /c .devtools\build-dev.bat
 6. **进程标识**:node + 命令行 marker(`@deepseek-ai` / `bin.js` / `\dsh\` / `/dsh/`,最后一项覆盖 npm shim 或手动终端启动产生的正斜杠路径)
 7. **前端窗口标题**:`DeepSeek Harness`(单击聚焦已有窗口的目标匹配串;APP 窗口与网页标签通用)
 
-dsh 0.0.1-rc.1/rc.2 依赖未发布的 `dsh-frontend` 包,npm 装不上,声明为不支持;其余已发布版本(0.0.1-rc.5 起)均兼容。
+dsh 0.0.1-rc.1/rc.2 依赖未发布的 `dsh-frontend` 包,npm 装不上,声明为不支持;0.0.1-rc.5 ~ 0.1.0-rc.7 历史上兼容,随 v1.6.0 收官不再承诺;**0.2.x 不适配**——2026-10-02 对 0.2.0-rc.2 解包侦察:七触点与 0.1.7-rc.2 实质相同(web-startup 逐字节一致),解包层面零改动兼容,但 0.2 线预留 `desktop` profile 走官方 Electron 桌面端分发,本项目已归档,0.2+ 用户引导至官方桌面端(README 归档 banner),不做适配。
 
 ## 内部机制(修改前必读)
 
@@ -108,6 +108,7 @@ dsh 0.0.1-rc.1/rc.2 依赖未发布的 `dsh-frontend` 包,npm 装不上,声明�
 
 ## 已知约定
 
+- 平台:仅支持 Windows 10/11(`app.manifest` supportedOS 仅声明 Win10 GUID,Win11 共用之);运行于系统自带 .NET Framework 4.8,in-box csc(C# 5)编译,零外部依赖
 - 单实例:互斥体名 `dsh-tray_SingleInstance`(上次实例崩溃后可自动接管)
 - 自动重启:ini 的 `autorestart` 键(历史版本存注册表 `Software\dsh-tray\AutoRestart`,启动时自动迁移一次)
 - 开机自启:ini 的 `autostart` 键为唯一来源,镜像写入注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`(值名 `dsh-tray`)

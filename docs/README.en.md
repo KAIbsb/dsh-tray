@@ -2,27 +2,29 @@
 
 **[简体中文](../README.md) | English**
 
-A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness): start / restart / stop / auto-restart on crash, all from the tray's right-click menu. No terminal needed, no risk of accidentally closing the window — works best paired with a browser app-mode window.
+A Windows system-tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness): start / restart / stop / auto-restart on crash, all from the tray menu. No terminal window needed; pairs well with a browser app-mode window.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](../LICENSE)
 [![Platform: Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%2F11-blue.svg)]()
 [![Language: C#](https://img.shields.io/badge/language-C%23-239120.svg)]()
 
-> **Disclaimer**: This project is the product of pure "vibe coding" — no rigorous testing or code review, and unknown bugs may exist. Use at your own risk. If you run into issues, please report them on [Issues](https://github.com/KAIbsb/dsh-tray/issues).
+> **Disclaimer**: This project is a small personal tool — no systematic testing or code review, and unknown defects may exist. Use at your own risk; please report issues on [Issues](https://github.com/KAIbsb/dsh-tray/issues).
+
+> **No longer maintained (archived October 2026)**: DeepSeek Harness now ships an [official desktop app](https://www.deepseek.com/en/harness). This project is archived with its final release **v1.6.0**, covering only the full dsh 0.1.x line. If you are still on dsh 0.1.x you can keep using it; dsh 0.2+ users and newcomers please move to the official desktop app (0.2 compatibility notes live in the developer documentation). The source stays available under MIT.
 
 ## Features
 
-- **Lifecycle management**: start / restart / stop / exit, all from the tray menu; **restart prefers the soft restart** (replay the exact boot invocation of the running host, hand off through a detached helper that waits for the port to release, then relaunch), falling back to the hard restart on failure
-- **Single-click tray icon**: starts the harness when it's down; focuses an already-open DSH window (app-mode or web tab) instead of stacking duplicates, opening one only when none exists
+- **Lifecycle management**: start / restart / stop / exit, all from the tray menu; **restart prefers the soft restart** (replay the exact boot invocation of the running host; a detached helper waits for the port to release, then relaunches), falling back to the hard restart on failure
+- **Single-click tray icon**: starts the harness when it's down; focuses an already-open DSH window (app-mode or web tab), opening a new one only when none exists
 - **Status icon**: blue whale while running; black/white whale when stopped, switching with the system light/dark theme in real time
 - **Auto-restart on crash** (toggleable): brings the harness back up after an unexpected exit, with cooldowns to prevent restart loops
 - **Start with Windows** (toggleable): writes `HKCU\...\Run`, no admin rights needed
 - **Native system menu**: Windows 11 rounded theme, follows the dark mode automatically
 - **No terminal window**: launches `node dsh web` hidden, output redirected to a dedicated `harness.log` independent of the tray's lifetime
-- **Zero-friction restarts**: an open page recovers by itself via the dsh client's built-in auto-reconnect — the tray never force-reloads it (no reload flash); press Ctrl+R once after a plugin frontend update
+- **Non-disruptive restarts**: an open page recovers by itself via the dsh client's built-in auto-reconnect — the tray never force-reloads it (no reload flash); press Ctrl+R once after a plugin frontend update
 - **16:9 app window**: the app-mode window opens centered at 16:9 fitting 90% of the primary work area instead of the browser's arbitrary default
-- **Launch-token authentication**: resolves the boot URL (with token, dsh >= 0.1.2) from `harness.log` and probes it before opening; every open silently renews the 30-day login cookie
-- **Version-adaptive launch**: launch flags follow the installed dsh version (supports dsh 0.0.1-rc.5 and later; audited per release and live-verified through the 0.1.5 line up to 0.1.5-rc.2; 0.1.6-alpha.1/alpha.2 and 0.1.7-alpha.1/alpha.2/rc.1 passed unpack audits with zero touchpoint changes; 0.0.1-rc.1/rc.2 cannot be installed from npm and are unsupported)
+- **Automatic authentication**: resolves the boot URL from `harness.log` and completes authentication automatically (dsh >= 0.1.2 embeds the token in the URL); the login cookie is silently renewed on every open
+- **Version-adaptive launch**: launch flags follow the installed dsh version. Covers the full dsh 0.1.x line (per-version audit records in the developer documentation); older versions are no longer covered; dsh 0.2+ is not supported — please move to the [official desktop app](https://www.deepseek.com/en/harness)
 - **On-demand elevation**: if the harness runs as administrator, the tray elevates itself to kill it (silent when UAC is set to "never notify")
 - **Manual theme**: follow system / light / dark (settings window; ini `theme` key)
 - **Auto-update**: one-click download + sha256 verification + deploy hint from the settings window when a new version is found
@@ -31,8 +33,8 @@ A Windows tray manager for [DeepSeek Harness](https://github.com/deepseek-ai/Dee
 ## Download & Install
 
 - Download the latest `dsh-tray.exe` from [Releases](https://github.com/KAIbsb/dsh-tray/releases)
-- **Single file, zero dependencies**: no runtime to install (Windows 10/11 ships .NET Framework 4.8), just double-click to run
-- **First run**: as an unsigned tool, SmartScreen may show "Unknown publisher" — click "More info" → "Run anyway" (see FAQ)
+- **Single file, zero dependencies**: no runtime to install (Windows 10/11 ships .NET Framework 4.8) — download and run
+- **First run**: as an unsigned executable, SmartScreen may show "Unknown publisher" — click "More info" → "Run anyway" (see FAQ)
 - **Upgrading**: overwrite the old exe with the new one; your settings (autostart, auto-restart, `dshtray.ini`) are untouched. When the settings window detects a new version you can also auto-update in one click (download + verification + deploy hint)
 - Want to build it yourself or contribute? See the [developer documentation](DEVELOPMENT.md)
 
@@ -53,7 +55,7 @@ The harness Web UI lives at `http://127.0.0.1:3080`. The tray's "Open Window" op
 
 ### 3. Run dsh-tray
 
-Double-click `dsh-tray.exe` → the whale icon appears in the tray → the harness starts automatically (no terminal window). **No more typing `dsh web` by hand.** Start/restart/stop and more live in the tray's right-click menu — see [Usage](#usage).
+Run `dsh-tray.exe` → the whale icon appears in the tray → the harness starts automatically (no terminal window). Start/restart/stop and more live in the tray menu — see [Usage](#usage).
 
 ## Usage
 
@@ -115,7 +117,7 @@ An empty line means the default / auto-detection for that item (node / dsh entry
 
 ## FAQ
 
-> Full FAQ: [docs/FAQ.en.md](FAQ.en.md)(完整 FAQ 见 [docs/FAQ.md](FAQ.md))。A few of the most frequently asked:
+> Full FAQ: [docs/FAQ.en.md](FAQ.en.md)(完整 FAQ 见 [docs/FAQ.md](FAQ.md))。Common questions:
 
 **Does dsh-tray access the network?**
 

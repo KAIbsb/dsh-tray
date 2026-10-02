@@ -22,6 +22,8 @@ The theme is checked every 3 seconds, so the icon updates within 3 seconds of sw
 
 Create a `dshtray.ini` next to the exe with `url = http://127.0.0.1:<your port>` (the port is derived from the URL; see [Configuration](../README.en.md#configuration)).
 
+**Note**: `url` must include the port (e.g. `http://127.0.0.1:3080`). Without one the tray checks port 80, misjudges the harness as stopped, and periodically auto-restarts it (repeated respawn records in `tray.log`). Correcting `url` restores normal behavior.
+
 ## Autostart stopped working after I moved the exe?
 
 Autostart records the exe's path at the time it was enabled. After moving the exe, tick "Start with Windows" in the tray menu again.
